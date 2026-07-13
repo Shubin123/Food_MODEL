@@ -1,0 +1,29 @@
+{
+  "nutritionverse-direct": {
+    "label": "NutritionVerse-Direct (ViT, 2024)",
+    "size": 224,
+    "mean": [0, 0, 0],
+    "std": [1, 1, 1],
+    "note": "Paper trains on NV-Real with no channel normalization. If predictions look off, use ImageNet norm [0.485,0.456,0.406]/[0.229,0.224,0.225].",
+    "outputs": [
+      { "key": "calories", "unit": "kcal" },
+      { "key": "mass", "unit": "g" },
+      { "key": "protein", "unit": "g" },
+      { "key": "fat", "unit": "g" },
+      { "key": "carbs", "unit": "g" }
+    ]
+  },
+  "foodcnn-nutrition5k": {
+    "label": "FoodCNN / Nutrition5k (Inception-ResNet)",
+    "size": 299,
+    "mean": [0.485, 0.456, 0.406],
+    "std": [0.229, 0.224, 0.225],
+    "outputs": [
+      { "key": "calories", "unit": "kcal" },
+      { "key": "mass", "unit": "g" },
+      { "key": "fat", "unit": "g" },
+      { "key": "carbs", "unit": "g" },
+      { "key": "protein", "unit": "g" }
+    ]
+  }
+}

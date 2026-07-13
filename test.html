@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Food Tracker - Tests</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .pass { color: #22c55e; }
+    .fail { color: #f87171; }
+    #summary { font-weight: 700; margin-bottom: 0.5rem; display: inline-block; }
+    #results { list-style: none; padding: 0; font-family: monospace; }
+    #results li { padding: 0.2rem 0; }
+    .toolbar { margin-bottom: 1rem; }
+    button { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Food Tracker · Tests</h1>
+    <p class="subtitle">Pure browser tests, no Node, no npm, no build step.</p>
+    <div class="card">
+      <div class="toolbar">
+        <button id="runBtn">Run tests</button>
+        <span id="summary"></span>
+      </div>
+      <ul id="results"></ul>
+    </div>
+  </main>
+
+  <script src="models.js"></script>
+  <script src="app.js"></script>
+  <script src="test-runner.js"></script>
+  <script src="tests.js"></script>
+  <script>
+    document.getElementById('runBtn').addEventListener('click', () => {
+      FT.test.run().then((r) => FT.test.render(r, document.getElementById('results')));
+    });
+  </script>
+</body>
+</html>
