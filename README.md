@@ -100,3 +100,14 @@ No Node, no npm, no test framework — a ~40-line harness in `test-runner.js`.
 | `model-specs.json` | Reference model definitions |
 | `test.html` / `test-runner.js` / `tests.js` | Browser test harness |
 | `styles.css` | Styling |
+
+
+## futher readings and ideas to be considered
+
+[Nutrition5k: Towards Automatic Nutritional Understanding of Generic Food](https://openaccess.thecvf.com/content/CVPR2021/papers/Thames_Nutrition5k_Towards_Automatic_Nutritional_Understanding_of_Generic_Food_CVPR_2021_paper.pdf) This model may use depth which is available on many iphones through ir.
+
+[NutritionVerse-Direct: Exploring Deep Neural Networks for Multitask Nutrition
+Prediction from Food Images](https://arxiv.org/pdf/2405.07814) Vit model
+
+
+
