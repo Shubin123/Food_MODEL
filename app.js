@@ -42,7 +42,9 @@
     if (!global.ort) throw new Error('ONNX Runtime Web failed to load');
     activeSpec = M.getSpec(specId);
     session = await global.ort.InferenceSession.create(modelUrl, {
-      executionProviders: ['webgl', 'wasm'],
+      // WASM first: broad op coverage for transformer models (Swin/ViT).
+      // WebGL is a faster fallback but supports fewer ops.
+      executionProviders: ['wasm', 'webgl'],
       graphOptimizationLevel: 'all'
     });
     return session;
@@ -86,13 +88,19 @@
       const results = await session.run(feeds);
       const dt = Math.round(performance.now() - t0);
 
-      const names = activeSpec.outputs.map((o) => o.name).filter(Boolean);
-      const outNames = names.length ? names : session.outputNames;
       let raw;
-      if (outNames.length === 1) {
-        raw = Array.from(results[outNames[0]].data);
+      if (activeSpec.type === 'classifier') {
+        // Classifier: one output tensor holding all class logits.
+        const outName = session.outputNames[0];
+        raw = Array.from(results[outName].data);
       } else {
-        raw = outNames.map((n) => results[n].data[0]);
+        const names = (activeSpec.outputs || []).map((o) => o.name).filter(Boolean);
+        const outNames = names.length ? names : session.outputNames;
+        if (outNames.length === 1) {
+          raw = Array.from(results[outNames[0]].data);
+        } else {
+          raw = outNames.map((n) => results[n].data[0]);
+        }
       }
       const nutrition = M.postprocess(raw, activeSpec);
       nutrition.model = activeSpec.label;
@@ -106,7 +114,7 @@
 
   function currentSpecId() {
     const sel = $('modelId');
-    return sel && sel.value ? sel.value : 'nutritionverse-direct';
+    return sel && sel.value ? sel.value : 'swin-food101';
   }
 
   function loadImage(src) {
@@ -121,13 +129,18 @@
 
   function renderResult(n) {
     $('resultCard').classList.remove('hidden');
-    const rows = [
+    const rows = [];
+    if (n.name) {
+      const conf = typeof n.confidence === 'number' ? ` (${n.confidence}%)` : '';
+      rows.push(['Detected', `${n.name}${conf}`]);
+    }
+    rows.push(
       ['Calories', `${n.calories} kcal`],
       ['Mass', `${n.mass} g`],
       ['Protein', `${n.protein} g`],
       ['Fat', `${n.fat} g`],
       ['Carbs', `${n.carbs} g`]
-    ];
+    );
     $('resultBody').innerHTML = rows
       .map(([k, v]) => `<p><strong>${k}:</strong> <span>${v}</span></p>`)
       .join('');
@@ -146,7 +159,8 @@
     const entries = readStore();
     entries.push({
       calories: n.calories, mass: n.mass, protein: n.protein,
-      fat: n.fat, carbs: n.carbs, model: n.model, at: new Date().toISOString()
+      fat: n.fat, carbs: n.carbs, name: n.name || null,
+      model: n.model, at: new Date().toISOString()
     });
     writeStore(entries);
     FT._lastResult = null;
@@ -164,8 +178,9 @@
     ul.innerHTML = '';
     entries.slice().reverse().forEach((e) => {
       const li = document.createElement('li');
+      const title = e.name ? `${e.name} - ${e.calories} kcal` : `${e.calories} kcal`;
       li.innerHTML =
-        `<div><strong>${e.calories} kcal</strong>` +
+        `<div><strong>${title}</strong>` +
         `<div class="entry-meta">P ${e.protein} · F ${e.fat} · C ${e.carbs} g · ${new Date(e.at).toLocaleString()}</div></div>`;
       ul.appendChild(li);
     });

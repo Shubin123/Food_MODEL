@@ -1,0 +1,4 @@
+# The ONNX model is a large binary; download it instead of committing it.
+# See README.md ("The model") for the download command.
+model.onnx
+*.onnx

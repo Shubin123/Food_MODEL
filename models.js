@@ -9,10 +9,26 @@
 (function (global) {
   const FT = (global.FT = global.FT || {});
 
-  // Each spec describes how to feed an ONNX nutrition model and how to read
-  // its outputs. Tweak MEAN/STD and `outputs` order to match the checkpoint
-  // you convert (see convert_to_onnx.py and README).
+  // Each spec describes how to feed an ONNX model and how to read its outputs.
+  //
+  // `type: 'classifier'` -> the model outputs class logits (Food-101). We take
+  //   argmax and look up nutrition from FT.nutrition (nutrition.js).
+  // `type: 'regressor'`  -> the model outputs numeric nutrition values directly
+  //   in the order given by `outputs`.
   const MODEL_SPECS = {
+    // Default working model bundled with the app:
+    // onnx-community/swin-finetuned-food101-ONNX (Swin, 101-class food
+    // classifier). Uses standard ImageNet normalization at 224x224.
+    'swin-food101': {
+      id: 'swin-food101',
+      label: 'Swin Food-101 classifier',
+      type: 'classifier',
+      size: 224,
+      mean: [0.485, 0.456, 0.406],
+      std: [0.229, 0.224, 0.225],
+      inputName: null, // use session.inputNames[0]
+      numClasses: 101
+    },
     // SOTA 2024 (Keller et al.) ViT-base-patch16-224 + 5 regression heads.
     // Paper trains on NV-Real with NO channel normalization -> mean/std = 0/1.
     // If predictions look off, switch to ImageNet norm:
@@ -20,6 +36,7 @@
     'nutritionverse-direct': {
       id: 'nutritionverse-direct',
       label: 'NutritionVerse-Direct (ViT, 2024)',
+      type: 'regressor',
       size: 224,
       mean: [0, 0, 0],
       std: [1, 1, 1],
@@ -38,6 +55,7 @@
     'foodcnn-nutrition5k': {
       id: 'foodcnn-nutrition5k',
       label: 'FoodCNN / Nutrition5k (Inception-ResNet)',
+      type: 'regressor',
       size: 299,
       mean: [0.485, 0.456, 0.406],
       std: [0.229, 0.224, 0.225],
@@ -98,9 +116,37 @@
     return imageToTensorChannels(imgData.data, size, spec.mean, spec.std);
   }
 
-  // Maps raw regression outputs (numbers, in spec order) to a nutrition object.
-  // Clamps negatives to 0 and rounds to sensible precision.
+  // Numerically-stable softmax over a flat array of logits.
+  function softmax(logits) {
+    let max = -Infinity;
+    for (let i = 0; i < logits.length; i++) if (logits[i] > max) max = logits[i];
+    const exps = new Array(logits.length);
+    let sum = 0;
+    for (let i = 0; i < logits.length; i++) {
+      const e = Math.exp(logits[i] - max);
+      exps[i] = e;
+      sum += e;
+    }
+    for (let i = 0; i < exps.length; i++) exps[i] /= sum || 1;
+    return exps;
+  }
+
+  // Index of the largest value in an array.
+  function argmax(arr) {
+    let best = 0;
+    for (let i = 1; i < arr.length; i++) if (arr[i] > arr[best]) best = i;
+    return best;
+  }
+
+  // Maps raw model outputs to a nutrition object.
+  //
+  // For classifiers: `raw` is the array of class logits. We softmax + argmax,
+  //   look up the dish's nutrition, and attach the predicted label/confidence.
+  // For regressors: `raw` is nutrition numbers in spec.outputs order.
   function postprocess(raw, spec) {
+    if (spec && spec.type === 'classifier') {
+      return postprocessClassifier(raw, spec);
+    }
     const out = {};
     spec.outputs.forEach((o, idx) => {
       let v = Array.isArray(raw) ? raw[idx] : raw[o.name];
@@ -112,9 +158,33 @@
     return out;
   }
 
-  // Resolves a model spec by id (falls back to the SOTA default).
+  function postprocessClassifier(logits, spec) {
+    const N = FT.nutrition;
+    if (!N) throw new Error('nutrition.js (FT.nutrition) is not loaded');
+    const probs = softmax(logits);
+    const idx = argmax(probs);
+    const n = N.nutritionForIndex(idx);
+    return {
+      label: n.label,
+      name: N.prettyLabel(n.label),
+      confidence: Math.round(probs[idx] * 1000) / 10, // percent, 1 decimal
+      classIndex: idx,
+      calories: Math.round(n.calories),
+      caloriesUnit: 'kcal',
+      mass: Math.round(n.mass * 10) / 10,
+      massUnit: 'g',
+      protein: Math.round(n.protein * 10) / 10,
+      proteinUnit: 'g',
+      fat: Math.round(n.fat * 10) / 10,
+      fatUnit: 'g',
+      carbs: Math.round(n.carbs * 10) / 10,
+      carbsUnit: 'g'
+    };
+  }
+
+  // Resolves a model spec by id (falls back to the bundled working default).
   function getSpec(id) {
-    return MODEL_SPECS[id] || MODEL_SPECS['nutritionverse-direct'];
+    return MODEL_SPECS[id] || MODEL_SPECS['swin-food101'];
   }
 
   FT.models = {
@@ -122,6 +192,8 @@
     validateImageUrl,
     imageToTensorChannels,
     preprocessImage,
+    softmax,
+    argmax,
     postprocess,
     getSpec
   };

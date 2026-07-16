@@ -13,9 +13,42 @@ from a CDN, so the model executes in the browser via WebGL/WASM.
 ## How it works
 
 1. You give it a photo — by **URL** (handy for testing) or by **file upload**.
-2. The image is resized/cropped and normalized in JavaScript (canvas).
-3. The preprocessed tensor is fed to an ONNX nutrition model running locally.
-4. The 5 regression outputs are mapped to calories + macros and shown/logged.
+2. The image is resized to 224×224 and normalized in JavaScript (canvas).
+3. The preprocessed tensor is fed to an ONNX **food classifier** running locally.
+4. The predicted dish (one of the 101 Food-101 categories) is mapped to typical
+   per-serving calories + macros (see `nutrition.js`) and shown/logged.
+
+---
+
+## The model (what actually ships)
+
+The app bundles a **working, verified** classifier:
+
+| Model | Backbone | Output | Source |
+|-------|----------|--------|--------|
+| **Swin Food-101** (default) | Swin transformer | 101-class food logits | `onnx-community/swin-finetuned-food101-ONNX` (Apache-2.0) |
+
+Because a public image→calorie *regression* model with usable weights isn't
+readily downloadable, the app uses a food **classifier** plus a nutrition
+lookup table. The classifier reliably recognizes the dish; `nutrition.js` maps
+that dish to approximate per-serving calories and macros.
+
+> `model.onnx` in this folder is the quantized Swin Food-101 checkpoint
+> (`onnx/model_quantized.onnx`, ~93 MB). It is downloaded from Hugging Face,
+> not committed to git (see `.gitattributes`).
+
+To re-download it:
+
+```bash
+curl -L "https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx?download=true" -o model.onnx
+```
+
+### Legacy regression option
+
+`convert_to_onnx.py` still exists for exporting a NutritionVerse-Direct /
+FoodCNN *regression* checkpoint to ONNX. If you convert one, its spec
+(`nutritionverse-direct` / `foodcnn-nutrition5k`) is still available in the
+model dropdown and `postprocess` handles the numeric-output path.
 
 ---
 
@@ -40,30 +73,32 @@ acceleration. TF.js would require an extra PyTorch→TF→TFJS conversion chain.
 
 ## Run it (no build step)
 
-The model is **not** checked in (it's a large binary). You have two options:
+`model.onnx` (the Swin Food-101 classifier) should sit next to `index.html`.
+If it's missing, download it:
 
-### Option A — bring your own `.onnx` (recommended)
-1. Get a checkpoint:
-   - NutritionVerse-Direct: request the released weights at `bit.ly/genai4good`.
-   - FoodCNN: clone `https://github.com/FoodCNN/FoodCNN`.
-2. Convert it to ONNX:
-   ```bash
-   pip install torch torchvision
-   python convert_to_onnx.py --model nutritionverse-direct \
-       --checkpoint nv_direct_vit.pth --out model.onnx
-   ```
-   (Adjust the fully-connected widths in `convert_to_onnx.py` if your
-   checkpoint's layer sizes differ — the script will tell you on a mismatch.)
-3. Put `model.onnx` next to `index.html`.
-4. Serve the folder (some browsers block model fetch over `file://`):
-   ```bash
-   python3 -m http.server 8000
-   ```
-   then open `http://localhost:8000`.
+```bash
+curl -L "https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx?download=true" -o model.onnx
+```
 
-### Option B — try without a real model
-`index.html` + `app.js` + `models.js` run standalone; only `Analyze` requires
-`model.onnx`. Open `test.html` to run the unit tests.
+Then serve the folder (some browsers block model fetch over `file://`):
+
+```bash
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000`, paste an image URL (or upload a file), and click
+**Analyze**.
+
+### Bring your own regression model (optional)
+
+If you have a NutritionVerse-Direct / FoodCNN checkpoint, convert it to ONNX and
+select its architecture in the dropdown:
+
+```bash
+pip install torch torchvision
+python convert_to_onnx.py --model nutritionverse-direct \
+    --checkpoint nv_direct_vit.pth --out model.onnx
+```
 
 ---
 
@@ -78,14 +113,39 @@ an uploaded file.
 
 ## Tests
 
+### Browser unit tests
 Open **`test.html`** in a browser and click **Run tests**. They cover:
 
 - `validateImageUrl` (accepts http(s), rejects others/invalid)
 - `imageToTensorChannels` (correct `[1,3,H,W]` float layout + normalization)
-- `postprocess` (raw outputs → calories/macros, negatives clamped)
+- `softmax` / `argmax`
+- `postprocess` — classifier path (logits → dish → calories/macros) and
+  regressor path (numeric outputs, negatives clamped)
 - `urlToDataUrl` (mocked `fetch`/`FileReader` network path)
 
 No Node, no npm, no test framework — a ~40-line harness in `test-runner.js`.
+
+### End-to-end model test
+`test_e2e.py` runs the **full pipeline headless** against the real `model.onnx`:
+fetch an image URL → preprocess → ONNX inference → dish → calories. It reads the
+labels/nutrition from `nutrition.js` and the normalization from `models.js`, so
+it exercises the shipped constants.
+
+```bash
+pip install onnxruntime numpy pillow
+python3 test_e2e.py \
+  --url "https://upload.wikimedia.org/wikipedia/commons/e/ed/Pink-Frosted-Donut.jpg" \
+  --expect donuts
+```
+
+Expected output ends with the donut's calories and `PASS`:
+
+```
+  Detected: Donuts (100.0%)
+  Calories: 452 kcal
+  ...
+PASS
+```
 
 ---
 
@@ -94,10 +154,13 @@ No Node, no npm, no test framework — a ~40-line harness in `test-runner.js`.
 | File | Purpose |
 |------|---------|
 | `index.html` | App UI; loads ORT from CDN |
-| `models.js` | Pure logic: validation, preprocessing, postprocessing, model specs |
+| `nutrition.js` | Food-101 labels + per-serving calorie/macro lookup table |
+| `models.js` | Pure logic: validation, preprocessing, softmax/argmax, postprocessing, model specs |
 | `app.js` | ORT session loading, inference, photo input, food log |
-| `convert_to_onnx.py` | PyTorch checkpoint → ONNX (NutritionVerse-Direct / FoodCNN) |
+| `model.onnx` | Swin Food-101 classifier (downloaded, git-ignored) |
+| `convert_to_onnx.py` | PyTorch checkpoint → ONNX (legacy regression option) |
 | `model-specs.json` | Reference model definitions |
+| `test_e2e.py` | Headless end-to-end test (URL → calories) against `model.onnx` |
 | `test.html` / `test-runner.js` / `tests.js` | Browser test harness |
 | `styles.css` | Styling |
 

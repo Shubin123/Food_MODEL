@@ -75,9 +75,37 @@
     assert.equal(out.mass, 45.5);
   });
 
-  test('getSpec falls back to the SOTA default for unknown ids', () => {
-    assert.equal(M.getSpec('does-not-exist').id, 'nutritionverse-direct');
+  test('getSpec falls back to the bundled default for unknown ids', () => {
+    assert.equal(M.getSpec('does-not-exist').id, 'swin-food101');
     assert.equal(M.getSpec('foodcnn-nutrition5k').id, 'foodcnn-nutrition5k');
+  });
+
+  test('softmax produces a normalized distribution', () => {
+    const p = M.softmax([1, 2, 3]);
+    const sum = p.reduce((s, x) => s + x, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-6);
+    assert.ok(p[2] > p[1] && p[1] > p[0]);
+  });
+
+  test('argmax returns the index of the largest value', () => {
+    assert.equal(M.argmax([0.1, 0.7, 0.2]), 1);
+    assert.equal(M.argmax([5, 1, 2, 9, 3]), 3);
+  });
+
+  test('classifier postprocess maps logits to the predicted dish nutrition', () => {
+    const spec = M.MODEL_SPECS['swin-food101'];
+    // 101 logits, all zero except "donuts" (index 31) set high.
+    const logits = new Array(101).fill(0);
+    const donutIdx = FT.nutrition.LABELS.indexOf('donuts');
+    logits[donutIdx] = 20;
+    const out = M.postprocess(logits, spec);
+    assert.equal(out.label, 'donuts');
+    assert.equal(out.name, 'Donuts');
+    assert.equal(out.classIndex, donutIdx);
+    assert.ok(out.confidence > 99);
+    const expected = FT.nutrition.NUTRITION['donuts'];
+    assert.equal(out.calories, Math.round(expected[0]));
+    assert.equal(out.protein, expected[2]);
   });
 
   test('urlToDataUrl fetches and converts a remote image', async () => {
@@ -121,7 +149,7 @@
       }
     };
     try {
-      const session = await FT.app.loadModel('model.onnx', 'nutritionverse-direct');
+      const session = await FT.app.loadModel('model.onnx', 'swin-food101');
       assert.ok(session && typeof session.run === 'function');
       assert.equal(createdWith, 'model.onnx');
     } finally {
