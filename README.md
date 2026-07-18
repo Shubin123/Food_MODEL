@@ -15,8 +15,9 @@ from a CDN, so the model executes in the browser via WebGL/WASM.
 1. You give it a photo — by **URL** (handy for testing) or by **file upload**.
 2. The image is resized to 224×224 and normalized in JavaScript (canvas).
 3. The preprocessed tensor is fed to an ONNX **food classifier** running locally.
-4. The predicted dish (one of the 101 Food-101 categories) is mapped to typical
-   per-serving calories + macros (see `nutrition.js`) and shown/logged.
+4. The predicted dish (one of the 101 Food-101 categories) is mapped to a
+   reference nutrition profile. Review and adjust the portion in grams before
+   logging; calories and macros scale with that portion.
 
 ---
 
@@ -113,7 +114,23 @@ an uploaded file.
 
 ## Tests
 
-### Browser unit tests
+### Automated browser tests
+
+Install the small, test-only Puppeteer dependency and run the complete browser
+gate (unit tests plus a deterministic upload -> inference -> portion edit ->
+log flow):
+
+```bash
+npm install
+npm test
+```
+
+The end-to-end test replaces ONNX Runtime with a deterministic fake model, so
+it verifies UI/calculation/session behavior without downloading `model.onnx`.
+It does not claim to measure real-model accuracy; that requires a held-out set
+of weighed food photos, as described in `goal.md`.
+
+### Manual browser unit tests
 Open **`test.html`** in a browser and click **Run tests**. They cover:
 
 - `validateImageUrl` (accepts http(s), rejects others/invalid)

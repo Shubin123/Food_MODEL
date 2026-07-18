@@ -41,9 +41,9 @@
     const { data } = M.imageToTensorChannels(
       pixels, 1, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
     );
-    assert.equal(data[0], (100 / 255 - 0.5) / 0.5);
-    assert.equal(data[1], (150 / 255 - 0.5) / 0.5);
-    assert.equal(data[2], (200 / 255 - 0.5) / 0.5);
+    assert.near(data[0], (100 / 255 - 0.5) / 0.5, 1e-7);
+    assert.near(data[1], (150 / 255 - 0.5) / 0.5, 1e-7);
+    assert.near(data[2], (200 / 255 - 0.5) / 0.5, 1e-7);
   });
 
   test('postprocess maps raw outputs to nutrition (NutritionVerse-Direct order)', () => {
@@ -62,7 +62,9 @@
     const out = M.postprocess([-5, -1, 12.3, 4.4, 0], spec);
     assert.equal(out.calories, 0);
     assert.equal(out.mass, 0);
-    assert.equal(out.protein, 12.3);
+    assert.equal(out.fat, 12.3);
+    assert.equal(out.carbs, 4.4);
+    assert.equal(out.protein, 0);
   });
 
   test('postprocess handles separate named outputs', () => {
@@ -108,6 +110,14 @@
     assert.equal(out.protein, expected[2]);
   });
 
+  test('nutrition scales a recognised food to the selected portion', () => {
+    const half = FT.nutrition.nutritionForLabelAndMass('donuts', 50);
+    assert.equal(half.mass, 50);
+    assert.equal(half.calories, 226);
+    assert.equal(half.protein, 2.5);
+    assert.throws(() => FT.nutrition.nutritionForLabelAndMass('donuts', 0));
+  });
+
   test('urlToDataUrl fetches and converts a remote image', async () => {
     const origFetch = global.fetch;
     global.fetch = async () => ({ ok: true, status: 200, blob: async () => ({}) });
@@ -149,9 +159,10 @@
       }
     };
     try {
-      const session = await FT.app.loadModel('model.onnx', 'swin-food101');
+      const url = `unit-model-${Date.now()}.onnx`;
+      const session = await FT.app.loadModel(url, 'swin-food101');
       assert.ok(session && typeof session.run === 'function');
-      assert.equal(createdWith, 'model.onnx');
+      assert.equal(createdWith, url);
     } finally {
       global.ort = realOrt;
     }

@@ -10,6 +10,7 @@
 
   let session = null;
   let activeSpec = null;
+  let sessionKey = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -41,12 +42,15 @@
   async function loadModel(modelUrl, specId) {
     if (!global.ort) throw new Error('ONNX Runtime Web failed to load');
     activeSpec = M.getSpec(specId);
+    const nextKey = `${modelUrl}|${activeSpec.id}`;
+    if (session && sessionKey === nextKey) return session;
     session = await global.ort.InferenceSession.create(modelUrl, {
       // WASM first: broad op coverage for transformer models (Swin/ViT).
       // WebGL is a faster fallback but supports fewer ops.
       executionProviders: ['wasm', 'webgl'],
       graphOptimizationLevel: 'all'
     });
+    sessionKey = nextKey;
     return session;
   }
 
@@ -75,9 +79,11 @@
     }
 
     try {
-      if (!session) {
+      const modelUrl = $('modelUrl').value.trim() || 'model.onnx';
+      const specId = currentSpecId();
+      if (!session || sessionKey !== `${modelUrl}|${specId}`) {
         setStatus('Loading model…');
-        await loadModel($('modelUrl').value.trim() || 'model.onnx', currentSpecId());
+        await loadModel(modelUrl, specId);
       }
       const pre = M.preprocessImage(imageEl, activeSpec);
       const tensor = new global.ort.Tensor('float32', pre.data, pre.dims);
@@ -145,6 +151,45 @@
       .map(([k, v]) => `<p><strong>${k}:</strong> <span>${v}</span></p>`)
       .join('');
     FT._lastResult = n;
+    const editor = $('portionEditor');
+    const portion = $('portionGrams');
+    if (n.mass > 0) {
+      portion.value = String(Math.round(n.mass));
+      editor.classList.remove('hidden');
+      $('estimateNote').textContent = n.label
+        ? 'Calories and macros are scaled from the detected food’s reference nutrition. Review the grams before logging.'
+        : 'Calories and macros are model estimates. Adjusting grams scales this result proportionally.';
+    } else {
+      editor.classList.add('hidden');
+    }
+  }
+
+  function roundNutrition(n) {
+    n.calories = Math.round(n.calories);
+    ['mass', 'protein', 'fat', 'carbs'].forEach((key) => { n[key] = Math.round(n[key] * 10) / 10; });
+    return n;
+  }
+
+  function updatePortion() {
+    const current = FT._lastResult;
+    if (!current) return;
+    const grams = Number($('portionGrams').value);
+    if (!Number.isFinite(grams) || grams <= 0) {
+      setStatus('Portion must be greater than 0 grams.', true);
+      return;
+    }
+    let next;
+    if (current.label && FT.nutrition) {
+      next = FT.nutrition.nutritionForLabelAndMass(current.label, grams);
+    } else {
+      const factor = grams / current.mass;
+      next = {
+        calories: current.calories * factor, mass: grams,
+        protein: current.protein * factor, fat: current.fat * factor, carbs: current.carbs * factor
+      };
+    }
+    Object.assign(current, roundNutrition(next));
+    renderResult(current);
   }
 
   function showPreview(src) {
@@ -196,6 +241,7 @@
     if (!$('analyzeBtn')) return;
     $('analyzeBtn').addEventListener('click', analyze);
     $('logBtn').addEventListener('click', logEntry);
+    $('portionGrams').addEventListener('input', updatePortion);
     // populate model selector
     const sel = $('modelId');
     if (sel) {
@@ -211,7 +257,7 @@
 
   FT.app = {
     loadModel, analyze, urlToDataUrl, fileToDataUrl,
-    renderEntries, readStore, writeStore, _getSession: () => session
+    renderEntries, readStore, writeStore, updatePortion, _getSession: () => session
   };
 
   if (typeof document !== 'undefined') {

@@ -17,6 +17,11 @@
     if (a !== b) throw new Error(msg || `Expected ${JSON.stringify(a)} === ${JSON.stringify(b)}`);
   };
   assert.ok = (a, msg) => assert(a, msg);
+  assert.near = (actual, expected, epsilon, msg) => {
+    if (Math.abs(actual - expected) > epsilon) {
+      throw new Error(msg || `Expected ${actual} to be within ${epsilon} of ${expected}`);
+    }
+  };
   assert.throws = (fn, msg) => {
     let threw = false;
     try { fn(); } catch (e) { threw = true; }

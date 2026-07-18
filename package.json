@@ -1,0 +1,13 @@
+{
+  "name": "food-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Static, client-side food tracking prototype",
+  "scripts": {
+    "test": "npm run test:browser",
+    "test:browser": "node e2e.test.js"
+  },
+  "devDependencies": {
+    "puppeteer": "24.12.1"
+  }
+}

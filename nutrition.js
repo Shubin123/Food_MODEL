@@ -163,6 +163,26 @@
     };
   }
 
+  // Converts the catalog's reference serving into a user-selected gram amount.
+  // The catalog is still an estimate, but this prevents every recognised dish
+  // from receiving the same calories regardless of visible portion size.
+  function nutritionForLabelAndMass(label, mass) {
+    const base = nutritionForLabel(label);
+    const grams = Number(mass);
+    if (!Number.isFinite(grams) || grams <= 0 || base.mass <= 0) {
+      throw new Error('Portion must be greater than 0 grams');
+    }
+    const factor = grams / base.mass;
+    return {
+      label: base.label,
+      calories: base.calories * factor,
+      mass: grams,
+      protein: base.protein * factor,
+      fat: base.fat * factor,
+      carbs: base.carbs * factor
+    };
+  }
+
   // Pretty display name, e.g. "chicken_curry" -> "Chicken Curry".
   function prettyLabel(label) {
     return String(label || '')
@@ -176,6 +196,7 @@
     NUTRITION,
     nutritionForIndex,
     nutritionForLabel,
+    nutritionForLabelAndMass,
     prettyLabel
   };
 })(typeof window !== 'undefined' ? window : globalThis);

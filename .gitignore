@@ -2,3 +2,5 @@
 # See README.md ("The model") for the download command.
 model.onnx
 *.onnx
+node_modules/
+coverage/

@@ -77,7 +77,7 @@
     }
     let parsed;
     try {
-      parsed = new URL(url, global.location ? global.location.href : undefined);
+      parsed = new URL(url);
     } catch (err) {
       throw new Error('Invalid URL');
     }

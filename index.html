@@ -12,8 +12,8 @@
   <main class="container">
     <h1>🍎 Food Tracker</h1>
     <p class="subtitle">
-      Estimate calories &amp; macros from a photo with a real nutrition model
-      (NutritionVerse-Direct / FoodCNN), running 100% on your device via ONNX Runtime Web.
+      Identify food from a photo, then review the estimated portion before
+      logging calories and macros. Results are estimates, not medical advice.
     </p>
 
     <section class="card">
@@ -39,6 +39,11 @@
       <h2>Result</h2>
       <img id="resultImg" class="hidden" alt="analyzed food" />
       <div id="resultBody"></div>
+      <div id="portionEditor" class="portion-editor hidden">
+        <label for="portionGrams">Portion (grams)</label>
+        <input id="portionGrams" type="number" min="1" step="1" inputmode="decimal" />
+        <p id="estimateNote" class="hint">Adjust the portion to recalculate this estimate.</p>
+      </div>
       <button id="logBtn">Add to log</button>
     </section>
 
