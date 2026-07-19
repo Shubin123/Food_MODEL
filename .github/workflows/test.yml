@@ -1,0 +1,103 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Fast gate: browser unit tests + E2E contract test (fake ONNX model)
+  # -----------------------------------------------------------------------
+  browser-tests:
+    name: Browser tests (Puppeteer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run Puppeteer E2E gate
+        run: npm test
+
+  # -----------------------------------------------------------------------
+  # Python: static checks + unit tests + benchmark (no model.onnx needed)
+  # -----------------------------------------------------------------------
+  python-tests:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Catalog validation
+        run: python scripts/build_catalog.py --validate
+
+      - name: Download test images (Wikimedia only — no HF auth needed)
+        run: python scripts/download_test_images.py --source wikimedia
+
+      - name: E2E tests (label count, spec consistency, preprocessing parity)
+        run: python test/test_e2e_real.py --save-reference
+
+      - name: Training pipeline smoke test (synthetic data, 2 epochs)
+        run: |
+          pip install -r training/requirements.txt
+          python training/train_regressor.py --dataset synthetic --epochs 2 --batch-size 4 --output-dir training/checkpoints
+
+      - name: Evaluate trained model
+        run: python training/evaluate.py --checkpoint training/checkpoints/best_model.pth --dataset synthetic
+
+  # -----------------------------------------------------------------------
+  # Full benchmark (requires model.onnx — downloaded from Hugging Face)
+  # -----------------------------------------------------------------------
+  benchmark:
+    name: Full benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [browser-tests, python-tests]
+    # Only run on main pushes and manual triggers (expensive)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Download model.onnx from Hugging Face
+        run: |
+          curl -L "https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx?download=true" -o model.onnx
+          ls -lh model.onnx
+
+      - name: Download test images
+        run: python scripts/download_test_images.py
+
+      - name: Run benchmark
+        run: python scripts/benchmark.py --limit 20
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-results.json
+            benchmark-results.csv
+            benchmark-report.md

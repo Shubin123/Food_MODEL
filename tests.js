@@ -114,7 +114,7 @@
     const half = FT.nutrition.nutritionForLabelAndMass('donuts', 50);
     assert.equal(half.mass, 50);
     assert.equal(half.calories, 226);
-    assert.equal(half.protein, 2.5);
+    assert.equal(half.protein, 2.45);
     assert.throws(() => FT.nutrition.nutritionForLabelAndMass('donuts', 0));
   });
 
@@ -168,7 +168,157 @@
     }
   });
 
+  // --- catalog integrity tests ---
+
+  test('all 101 LABELS have nutrition entries', () => {
+    const N = FT.nutrition;
+    assert.equal(N.LABELS.length, 101);
+    let missing = 0;
+    N.LABELS.forEach(function (label) {
+      if (!N.NUTRITION[label]) missing++;
+    });
+    assert.equal(missing, 0, missing + ' labels missing from NUTRITION table');
+  });
+
+  test('every nutrition entry has positive calories', () => {
+    const N = FT.nutrition;
+    var zeroCal = [];
+    Object.keys(N.NUTRITION).forEach(function (label) {
+      var v = N.NUTRITION[label];
+      if (!v || v[0] <= 0) zeroCal.push(label);
+    });
+    assert.equal(zeroCal.length, 0, 'Zero-calorie foods: ' + zeroCal.join(', '));
+  });
+
+  test('nutritionForLabel and nutritionForIndex agree for all 101 indices', () => {
+    const N = FT.nutrition;
+    for (var i = 0; i < 101; i++) {
+      var byIdx = N.nutritionForIndex(i);
+      var byLabel = N.nutritionForLabel(N.LABELS[i]);
+      assert.equal(byIdx.label, byLabel.label);
+      assert.equal(byIdx.calories, byLabel.calories);
+      assert.equal(byIdx.mass, byLabel.mass);
+      assert.equal(byIdx.protein, byLabel.protein);
+      assert.equal(byIdx.fat, byLabel.fat);
+      assert.equal(byIdx.carbs, byLabel.carbs);
+    }
+  });
+
+  test('nutritionForLabelAndMass scales per-100g correctly', () => {
+    const N = FT.nutrition;
+    // Pizza: 266 kcal/100g
+    var r = N.nutritionForLabelAndMass('pizza', 150);
+    assert.equal(r.mass, 150);
+    assert.equal(r.calories, 266 * 1.5);   // 399
+    assert.equal(r.protein, 11 * 1.5);      // 16.5
+    assert.equal(r.fat, 9.7 * 1.5);         // 14.55
+    assert.equal(r.carbs, 33.3 * 1.5);      // 49.95
+  });
+
+  test('nutritionForLabelAndMass handles fractional grams', () => {
+    const N = FT.nutrition;
+    var r = N.nutritionForLabelAndMass('steak', 75.5);
+    assert.equal(r.mass, 75.5);
+    assert.equal(r.calories, 271 * 0.755);  // ~204.605
+    assert.equal(r.protein, 25 * 0.755);    // 18.875
+  });
+
+  test('nutritionForLabelAndMass rejects invalid portions', () => {
+    var N = FT.nutrition;
+    assert.throws(function () { N.nutritionForLabelAndMass('pizza', 0); });
+    assert.throws(function () { N.nutritionForLabelAndMass('pizza', -5); });
+    assert.throws(function () { N.nutritionForLabelAndMass('pizza', NaN); });
+    assert.throws(function () { N.nutritionForLabelAndMass('pizza', Infinity); });
+  });
+
+  test('nutritionForLabelAndMass works for unknown label (falls back to zeros)', function () {
+    var N = FT.nutrition;
+    // Unknown label: calories=0, mass=100 — scaling 200g should give 0 cals, 200g mass
+    var r = N.nutritionForLabelAndMass('nonexistent_food', 200);
+    assert.equal(r.mass, 200);
+    assert.equal(r.calories, 0);
+    assert.equal(r.protein, 0);
+    assert.equal(r.fat, 0);
+    assert.equal(r.carbs, 0);
+  });
+
+  test('CATALOG_VERSION is defined and follows semver', function () {
+    var v = FT.nutrition.CATALOG_VERSION;
+    assert.ok(typeof v === 'string' && v.length > 0, 'CATALOG_VERSION must be a non-empty string');
+    assert.ok(/^\d+\.\d+\.\d+/.test(v), 'CATALOG_VERSION should be semver-like, got: ' + v);
+  });
+
+  test('prettyLabel formats underscore labels', function () {
+    var N = FT.nutrition;
+    assert.equal(N.prettyLabel('chicken_curry'), 'Chicken Curry');
+    assert.equal(N.prettyLabel('macaroni_and_cheese'), 'Macaroni And Cheese');
+    assert.equal(N.prettyLabel('donuts'), 'Donuts');
+    assert.equal(N.prettyLabel(''), '');
+  });
+
+  // --- preprocessing parity test (single-pixel golden value) ---
+  // This tensor is the expected output for a 1×1 red pixel [255,0,0,255]
+  // preprocessed with ImageNet normalization (mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]).
+  // The Python reference produces: R=(1-0.485)/0.229=2.2489, G=(0-0.456)/0.224=-2.0357, B=(0-0.406)/0.225=-1.8044
+  test('imageToTensorChannels produces correct normalized values (parity with Python)', function () {
+    var pixels = new Uint8ClampedArray([255, 0, 0, 255]); // single red pixel
+    var mean = [0.485, 0.456, 0.406];
+    var std  = [0.229, 0.224, 0.225];
+    var result = M.imageToTensorChannels(pixels, 1, mean, std);
+    assert.equal(result.dims[0], 1);
+    assert.equal(result.dims[1], 3);
+    assert.equal(result.dims[2], 1);
+    assert.equal(result.dims[3], 1);
+    // R channel: (255/255 - 0.485) / 0.229 = (1 - 0.485) / 0.229
+    assert.near(result.data[0], (1 - 0.485) / 0.229, 1e-4);
+    // G channel: (0/255 - 0.456) / 0.224 = -0.456 / 0.224
+    assert.near(result.data[1], (0 - 0.456) / 0.224, 1e-4);
+    // B channel: (0/255 - 0.406) / 0.225 = -0.406 / 0.225
+    assert.near(result.data[2], (0 - 0.406) / 0.225, 1e-4);
+  });
+
+  // --- regression postprocess with real model output shapes ---
+  test('postprocess regression handles 5-element array (NV-Direct order)', function () {
+    var spec = M.MODEL_SPECS['nutritionverse-direct'];
+    // Simulate a real model output: ~250 kcal, ~300g, 20g protein, 10g fat, 30g carbs
+    var out = M.postprocess([250.4, 300.6, 20.1, 10.2, 30.7], spec);
+    assert.equal(out.calories, 250);     // rounded to int
+    assert.equal(out.mass, 300.6);       // 1 decimal
+    assert.equal(out.protein, 20.1);
+    assert.equal(out.fat, 10.2);
+    assert.equal(out.carbs, 30.7);
+    assert.equal(out.caloriesUnit, 'kcal');
+    assert.equal(out.massUnit, 'g');
+  });
+
+  test('postprocess regression clamps negative predictions to 0', function () {
+    var spec = M.MODEL_SPECS['foodcnn-nutrition5k'];
+    var out = M.postprocess([-5, -1, 12.3, 4.4, 0], spec);
+    assert.equal(out.calories, 0);
+    assert.equal(out.mass, 0);
+    assert.equal(out.fat, 12.3);
+    assert.equal(out.carbs, 4.4);
+    assert.equal(out.protein, 0);
+  });
+
+  // --- model spec validation ---
+  test('all model specs have required fields', function () {
+    var ids = ['swin-food101', 'nutritionverse-direct', 'foodcnn-nutrition5k'];
+    ids.forEach(function (id) {
+      var spec = M.MODEL_SPECS[id];
+      assert.ok(spec, 'Missing spec: ' + id);
+      assert.ok(typeof spec.size === 'number' && spec.size > 0, id + ': invalid size');
+      assert.ok(Array.isArray(spec.mean) && spec.mean.length === 3, id + ': invalid mean');
+      assert.ok(Array.isArray(spec.std) && spec.std.length === 3, id + ': invalid std');
+      assert.ok(spec.type === 'classifier' || spec.type === 'regressor', id + ': invalid type');
+    });
+  });
+
+  test('swin-food101 spec has numClasses=101', function () {
+    assert.equal(M.MODEL_SPECS['swin-food101'].numClasses, 101);
+  });
+
   if (typeof document !== 'undefined' && document.getElementById('results')) {
-    FT.test.run().then((r) => FT.test.render(r, document.getElementById('results')));
+    FT.test.run().then(function (r) { FT.test.render(r, document.getElementById('results')); });
   }
 })(typeof window !== 'undefined' ? window : globalThis);

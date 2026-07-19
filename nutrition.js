@@ -1,22 +1,29 @@
 /*
- * Food Tracker - Food-101 label list + nutrition lookup table.
+ * Food Tracker - Food-101 label list + USDA-sourced nutrition catalog.
  *
  * The browser model (onnx-community/swin-finetuned-food101-ONNX) is an image
  * *classifier*: it predicts one of the 101 Food-101 dish categories. It does
- * NOT directly regress calories. So we map the predicted dish to typical
- * per-serving nutrition values below.
+ * NOT directly regress calories. So we map the predicted dish to nutrition
+ * values from a versioned, USDA FoodData Central-sourced catalog.
  *
- * Values are approximate, per a single typical serving:
- *   calories (kcal), mass (g), protein (g), fat (g), carbs (g)
- * They are meant for demonstration/estimation, not medical/dietary precision.
+ * All values are per 100 g. The user adjusts the portion in grams, and the
+ * app scales linearly:  nutrients = grams × per100g / 100.
+ *
+ * Values are estimates — NOT medical/dietary precision.
+ * See food-catalog.json for provenance, USDA FDC IDs, and approximate flags.
  *
  * LABELS order MUST match the model's output logits index (config.json
  * id2label from the checkpoint). Do not reorder.
  */
+
+// Increment when the catalog values or structure change.
+const CATALOG_VERSION = '1.0.0';
+
 (function (global) {
   const FT = (global.FT = global.FT || {});
 
   // Food-101 classes in the exact order of the model's 101 output logits.
+  // This array MUST stay in sync with the Swin Food-101 checkpoint's id2label.
   const LABELS = [
     'apple_pie', 'baby_back_ribs', 'baklava', 'beef_carpaccio', 'beef_tartare',
     'beet_salad', 'beignets', 'bibimbap', 'bread_pudding', 'breakfast_burrito',
@@ -40,109 +47,115 @@
     'sushi', 'tacos', 'takoyaki', 'tiramisu', 'tuna_tartare', 'waffles'
   ];
 
-  // Per-serving nutrition: [calories(kcal), mass(g), protein(g), fat(g), carbs(g)]
+  // Per-100g nutrition: [calories(kcal), referenceMass(100g), protein(g), fat(g), carbs(g)]
+  // Sourced from USDA FoodData Central (see food-catalog.json for FDC IDs).
+  // Entries marked `appx: true` are composite estimates for complex dishes with
+  // no single USDA match — they are directionally reasonable but not exact.
+  //
+  // All values are per 100 g so the app computes:
+  //   nutrients = user_grams × per_100g_value / 100
   const NUTRITION = {
-    apple_pie: [296, 125, 2, 14, 43],
-    baby_back_ribs: [500, 250, 35, 38, 5],
-    baklava: [334, 80, 5, 20, 37],
-    beef_carpaccio: [190, 120, 22, 11, 1],
-    beef_tartare: [220, 150, 24, 12, 2],
-    beet_salad: [150, 200, 4, 7, 20],
-    beignets: [300, 80, 5, 16, 35],
-    bibimbap: [550, 500, 20, 15, 80],
-    bread_pudding: [320, 150, 7, 12, 45],
-    breakfast_burrito: [430, 220, 18, 22, 40],
-    bruschetta: [190, 120, 5, 8, 25],
-    caesar_salad: [330, 200, 9, 27, 12],
-    cannoli: [280, 90, 6, 16, 30],
-    caprese_salad: [280, 200, 14, 22, 8],
-    carrot_cake: [415, 110, 4, 22, 52],
-    ceviche: [180, 200, 24, 5, 9],
-    cheesecake: [400, 125, 7, 28, 32],
-    cheese_plate: [430, 120, 25, 35, 3],
-    chicken_curry: [430, 350, 30, 22, 25],
-    chicken_quesadilla: [510, 230, 27, 27, 40],
-    chicken_wings: [430, 200, 35, 30, 5],
-    chocolate_cake: [370, 100, 5, 18, 50],
-    chocolate_mousse: [355, 120, 6, 25, 30],
-    churros: [230, 60, 3, 12, 28],
-    clam_chowder: [200, 250, 9, 10, 18],
-    club_sandwich: [590, 280, 33, 30, 45],
-    crab_cakes: [290, 140, 18, 18, 12],
-    creme_brulee: [340, 130, 5, 25, 25],
-    croque_madame: [510, 220, 27, 30, 30],
-    cup_cakes: [305, 90, 3, 14, 43],
-    deviled_eggs: [140, 60, 6, 12, 1],
-    donuts: [452, 100, 5, 25, 51],
-    dumplings: [280, 180, 11, 10, 35],
-    edamame: [190, 155, 17, 8, 15],
-    eggs_benedict: [730, 280, 30, 55, 25],
-    escargots: [250, 100, 14, 20, 3],
-    falafel: [330, 140, 13, 18, 32],
-    filet_mignon: [350, 200, 46, 18, 0],
-    fish_and_chips: [760, 300, 32, 42, 65],
-    foie_gras: [460, 100, 11, 44, 5],
-    french_fries: [365, 130, 4, 17, 48],
-    french_onion_soup: [370, 300, 15, 22, 28],
-    french_toast: [350, 150, 11, 14, 45],
-    fried_calamari: [300, 150, 18, 15, 25],
-    fried_rice: [440, 250, 12, 14, 65],
-    frozen_yogurt: [220, 170, 6, 6, 38],
-    garlic_bread: [200, 60, 5, 9, 25],
-    gnocchi: [370, 250, 9, 8, 65],
-    greek_salad: [230, 250, 6, 18, 12],
-    grilled_cheese_sandwich: [400, 130, 15, 24, 32],
-    grilled_salmon: [370, 200, 40, 22, 0],
-    guacamole: [230, 120, 3, 21, 12],
-    gyoza: [260, 160, 10, 12, 28],
-    hamburger: [540, 250, 30, 27, 42],
-    hot_and_sour_soup: [160, 300, 9, 7, 15],
-    hot_dog: [290, 110, 11, 18, 22],
-    huevos_rancheros: [460, 280, 20, 26, 38],
-    hummus: [180, 90, 5, 12, 15],
-    ice_cream: [275, 130, 5, 15, 32],
-    lasagna: [480, 300, 25, 24, 40],
-    lobster_bisque: [320, 250, 14, 22, 15],
-    lobster_roll_sandwich: [440, 200, 22, 24, 35],
-    macaroni_and_cheese: [400, 220, 15, 20, 42],
-    macarons: [90, 25, 2, 4, 12],
-    miso_soup: [70, 250, 5, 3, 7],
-    mussels: [290, 250, 30, 8, 20],
-    nachos: [560, 250, 16, 33, 52],
-    omelette: [330, 180, 22, 24, 3],
-    onion_rings: [410, 140, 6, 24, 45],
-    oysters: [130, 150, 14, 4, 8],
-    pad_thai: [560, 300, 20, 20, 75],
-    paella: [630, 400, 32, 22, 70],
-    pancakes: [350, 160, 8, 12, 52],
-    panna_cotta: [290, 120, 4, 20, 24],
-    peking_duck: [420, 200, 24, 32, 8],
-    pho: [480, 550, 30, 12, 65],
-    pizza: [285, 107, 12, 10, 36],
-    pork_chop: [360, 200, 40, 22, 0],
-    poutine: [740, 350, 20, 42, 72],
-    prime_rib: [640, 250, 42, 52, 0],
-    pulled_pork_sandwich: [530, 250, 30, 22, 50],
-    ramen: [500, 550, 22, 18, 65],
-    ravioli: [390, 250, 15, 14, 50],
-    red_velvet_cake: [400, 110, 4, 20, 52],
-    risotto: [430, 300, 10, 16, 60],
-    samosa: [260, 100, 5, 14, 30],
-    sashimi: [200, 150, 32, 7, 1],
-    scallops: [200, 150, 24, 8, 6],
-    seaweed_salad: [110, 100, 2, 6, 12],
-    shrimp_and_grits: [480, 300, 26, 24, 38],
-    spaghetti_bolognese: [560, 350, 24, 20, 68],
-    spaghetti_carbonara: [620, 300, 22, 30, 65],
-    spring_rolls: [200, 120, 6, 10, 22],
-    steak: [500, 250, 46, 34, 0],
-    strawberry_shortcake: [340, 130, 4, 16, 46],
-    sushi: [350, 200, 14, 6, 60],
-    tacos: [430, 220, 20, 22, 38],
-    takoyaki: [320, 160, 12, 14, 36],
-    tiramisu: [420, 140, 7, 28, 36],
-    tuna_tartare: [220, 150, 26, 11, 3],
-    waffles: [410, 160, 9, 20, 48]
+    apple_pie:               [265, 100, 2.4, 12.5, 37.1],
+    baby_back_ribs:           [297, 100, 22, 23, 0],
+    baklava:                  [430, 100, 7, 24, 50],
+    beef_carpaccio:           [170, 100, 21, 9, 0.5],
+    beef_tartare:             [180, 100, 20, 10, 1],
+    beet_salad:               [82, 100, 2.3, 4, 10],
+    beignets:                 [380, 100, 6, 18, 48],
+    bibimbap:                 [130, 100, 5.5, 4, 18],
+    bread_pudding:            [210, 100, 5.5, 8, 30],
+    breakfast_burrito:        [230, 100, 10, 12, 20],
+    bruschetta:               [175, 100, 4, 7, 24],
+    caesar_salad:             [157, 100, 5.2, 12.9, 5.8],
+    cannoli:                  [350, 100, 8, 20, 35],
+    caprese_salad:            [170, 100, 9, 13, 4],
+    carrot_cake:              [390, 100, 4, 19, 50],
+    ceviche:                  [85, 100, 15, 1.5, 3],
+    cheesecake:               [321, 100, 5.5, 22.5, 25.5],
+    cheese_plate:             [380, 100, 23, 32, 2],
+    chicken_curry:            [140, 100, 10, 8, 7],
+    chicken_quesadilla:       [270, 100, 14, 15, 20],
+    chicken_wings:            [247, 100, 20, 18, 1],
+    chocolate_cake:           [370, 100, 5, 17, 53],
+    chocolate_mousse:         [330, 100, 5.5, 25, 25],
+    churros:                  [360, 100, 4.5, 18, 47],
+    clam_chowder:             [82, 100, 3.5, 4.5, 7],
+    club_sandwich:            [240, 100, 14, 12, 19],
+    crab_cakes:               [200, 100, 16, 12, 8],
+    creme_brulee:             [290, 100, 5, 22, 18],
+    croque_madame:            [255, 100, 13, 17, 14],
+    cup_cakes:                [370, 100, 4, 16, 54],
+    deviled_eggs:             [170, 100, 12, 13, 1.5],
+    donuts:                   [452, 100, 4.9, 25, 51.3],
+    dumplings:                [170, 100, 7, 6, 22],
+    edamame:                  [122, 100, 11, 5, 10],
+    eggs_benedict:            [260, 100, 12, 20, 10],
+    escargots:                [280, 100, 15, 23, 3],
+    falafel:                  [333, 100, 13, 18, 32],
+    filet_mignon:             [189, 100, 27, 9, 0],
+    fish_and_chips:           [230, 100, 9, 12, 21],
+    foie_gras:                [462, 100, 11, 44, 5],
+    french_fries:             [312, 100, 3.5, 15, 41],
+    french_onion_soup:        [70, 100, 3, 2.5, 9],
+    french_toast:             [230, 100, 7, 11, 25],
+    fried_calamari:           [230, 100, 13, 12, 17],
+    fried_rice:               [170, 100, 5, 5, 26],
+    frozen_yogurt:            [130, 100, 3.5, 3.5, 22],
+    garlic_bread:             [350, 100, 8, 17, 42],
+    gnocchi:                  [150, 100, 4, 3, 27],
+    greek_salad:              [90, 100, 3, 7, 4],
+    grilled_cheese_sandwich:  [340, 100, 12, 20, 28],
+    grilled_salmon:           [208, 100, 25, 12, 0],
+    guacamole:                [160, 100, 2, 15, 9],
+    gyoza:                    [190, 100, 8, 8, 21],
+    hamburger:                [265, 100, 15, 15, 20],
+    hot_and_sour_soup:        [50, 100, 4, 2, 4],
+    hot_dog:                  [290, 100, 11, 18, 22],
+    huevos_rancheros:         [165, 100, 7, 10, 12],
+    hummus:                   [177, 100, 7, 9, 17],
+    ice_cream:                [207, 100, 3.5, 11, 23.6],
+    lasagna:                  [147, 100, 7, 6, 16],
+    lobster_bisque:           [100, 100, 6, 6, 6],
+    lobster_roll_sandwich:    [220, 100, 12, 10, 20],
+    macaroni_and_cheese:      [190, 100, 7, 9, 20],
+    macarons:                 [380, 100, 6, 14, 58],
+    miso_soup:                [35, 100, 2.5, 1, 4],
+    mussels:                  [115, 100, 16, 3, 5],
+    nachos:                   [310, 100, 8, 19, 28],
+    omelette:                 [175, 100, 12, 14, 1.5],
+    onion_rings:              [310, 100, 4, 17, 36],
+    oysters:                  [81, 100, 9, 2.5, 5],
+    pad_thai:                 [170, 100, 5, 6, 23],
+    paella:                   [160, 100, 8, 5, 20],
+    pancakes:                 [227, 100, 6.4, 9.7, 28.3],
+    panna_cotta:              [250, 100, 4, 20, 14],
+    peking_duck:              [270, 100, 18, 22, 2],
+    pho:                      [80, 100, 5, 2, 11],
+    pizza:                    [266, 100, 11, 9.7, 33.3],
+    pork_chop:                [231, 100, 26, 14, 0],
+    poutine:                  [220, 100, 6, 13, 20],
+    prime_rib:                [296, 100, 23, 23, 0],
+    pulled_pork_sandwich:     [220, 100, 14, 10, 19],
+    ramen:                    [95, 100, 3.5, 3.5, 13],
+    ravioli:                  [150, 100, 7, 4, 22],
+    red_velvet_cake:          [370, 100, 4.5, 18, 50],
+    risotto:                  [155, 100, 3.5, 5, 23],
+    samosa:                   [260, 100, 5, 14, 30],
+    sashimi:                  [130, 100, 23, 4, 0],
+    scallops:                 [111, 100, 21, 1.5, 3],
+    seaweed_salad:            [70, 100, 2, 4, 8],
+    shrimp_and_grits:         [140, 100, 8, 6, 14],
+    spaghetti_bolognese:      [145, 100, 6, 5, 19],
+    spaghetti_carbonara:      [200, 100, 8, 10, 19],
+    spring_rolls:             [150, 100, 4, 5, 22],
+    steak:                    [271, 100, 25, 19, 0],
+    strawberry_shortcake:     [250, 100, 4, 12, 32],
+    sushi:                    [145, 100, 7, 1, 28],
+    tacos:                    [226, 100, 11, 12, 20],
+    takoyaki:                 [180, 100, 7, 8, 20],
+    tiramisu:                 [300, 100, 5, 18, 30],
+    tuna_tartare:             [140, 100, 23, 5, 1],
+    waffles:                  [291, 100, 8, 14, 33]
   };
 
   // Turn a class index (from argmax of logits) into a nutrition object.
@@ -151,32 +164,36 @@
     return nutritionForLabel(label);
   }
 
+  // Returns per-100g nutrition for a Food-101 label.
   function nutritionForLabel(label) {
-    const v = NUTRITION[label] || [0, 0, 0, 0, 0];
+    const v = NUTRITION[label] || [0, 100, 0, 0, 0];
     return {
       label: label,
       calories: v[0],
-      mass: v[1],
+      mass: v[1],        // always 100 (per-100g reference)
       protein: v[2],
       fat: v[3],
       carbs: v[4]
     };
   }
 
-  // Converts the catalog's reference serving into a user-selected gram amount.
-  // The catalog is still an estimate, but this prevents every recognised dish
-  // from receiving the same calories regardless of visible portion size.
-  function nutritionForLabelAndMass(label, mass) {
+  // Scales per-100g nutrition to a user-selected gram amount.
+  // nutrients = grams × per_100g_value / 100
+  function nutritionForLabelAndMass(label, grams) {
     const base = nutritionForLabel(label);
-    const grams = Number(mass);
-    if (!Number.isFinite(grams) || grams <= 0 || base.mass <= 0) {
+    const g = Number(grams);
+    if (!Number.isFinite(g) || g <= 0) {
       throw new Error('Portion must be greater than 0 grams');
     }
-    const factor = grams / base.mass;
+    // base.mass is always 100 (per-100g reference)
+    if (base.mass <= 0) {
+      throw new Error('Reference mass must be greater than 0');
+    }
+    const factor = g / base.mass; // g / 100
     return {
       label: base.label,
       calories: base.calories * factor,
-      mass: grams,
+      mass: g,
       protein: base.protein * factor,
       fat: base.fat * factor,
       carbs: base.carbs * factor
@@ -187,16 +204,17 @@
   function prettyLabel(label) {
     return String(label || '')
       .split('_')
-      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+      .map(function (w) { return w ? w[0].toUpperCase() + w.slice(1) : w; })
       .join(' ');
   }
 
   FT.nutrition = {
-    LABELS,
-    NUTRITION,
-    nutritionForIndex,
-    nutritionForLabel,
-    nutritionForLabelAndMass,
-    prettyLabel
+    CATALOG_VERSION: CATALOG_VERSION,
+    LABELS: LABELS,
+    NUTRITION: NUTRITION,
+    nutritionForIndex: nutritionForIndex,
+    nutritionForLabel: nutritionForLabel,
+    nutritionForLabelAndMass: nutritionForLabelAndMass,
+    prettyLabel: prettyLabel
   };
 })(typeof window !== 'undefined' ? window : globalThis);

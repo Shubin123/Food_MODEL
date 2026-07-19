@@ -1,0 +1,257 @@
+[
+  {
+    "id": "caesar_salad_wikimedia.jpg",
+    "image": "test/fixtures/images/caesar_salad_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/2/23/Caesar_salad_%282%29.jpg",
+    "expected_label": "caesar_salad",
+    "notes": "Caesar salad close-up",
+    "ground_truth": {
+      "calories": 157,
+      "mass": 100,
+      "protein": 5,
+      "fat": 13,
+      "carbs": 6,
+      "source": "USDA FDC 2342484 (Caesar salad with dressing + croutons, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "cheesecake_wikimedia.jpg",
+    "image": "test/fixtures/images/cheesecake_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/8/8e/Baked_cheesecake_with_raspberries_and_blueberries.jpg",
+    "expected_label": "cheesecake",
+    "notes": "Baked cheesecake with berries",
+    "ground_truth": {
+      "calories": 321,
+      "mass": 100,
+      "protein": 6,
+      "fat": 22,
+      "carbs": 26,
+      "source": "USDA FDC 2342482 (cheesecake, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "chicken_wings_wikimedia.jpg",
+    "image": "test/fixtures/images/chicken_wings_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/e/ed/Buffalo_chicken_wings.jpg",
+    "expected_label": "chicken_wings",
+    "notes": "Buffalo chicken wings",
+    "ground_truth": {
+      "calories": 247,
+      "mass": 100,
+      "protein": 20,
+      "fat": 18,
+      "carbs": 1,
+      "source": "USDA FDC 2342483 (chicken wing, fried, meat+skin, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "donut_wikimedia.jpg",
+    "image": "test/fixtures/images/donut_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/e/ed/Pink-Frosted-Donut.jpg",
+    "expected_label": "donuts",
+    "notes": "Pink frosted donut on parchment \u2014 the original test image",
+    "ground_truth": {
+      "calories": 452,
+      "mass": 100,
+      "protein": 5,
+      "fat": 25,
+      "carbs": 51,
+      "source": "USDA FDC 1841655 (glazed doughnut, per 100g); typical doughnut ~60-100g"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "french_fries_wikimedia.jpg",
+    "image": "test/fixtures/images/french_fries_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/8/83/French_Fries.JPG",
+    "expected_label": "french_fries",
+    "notes": "French fries in a bowl",
+    "ground_truth": {
+      "calories": 312,
+      "mass": 100,
+      "protein": 4,
+      "fat": 15,
+      "carbs": 41,
+      "source": "USDA FDC 170698 (restaurant french fries, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "hamburger_wikimedia.jpg",
+    "image": "test/fixtures/images/hamburger_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/4/47/Hamburger_%28black_bg%29.jpg",
+    "expected_label": "hamburger",
+    "notes": "Classic hamburger on dark background",
+    "ground_truth": {
+      "calories": 265,
+      "mass": 100,
+      "protein": 15,
+      "fat": 15,
+      "carbs": 20,
+      "source": "USDA FDC 2342480 (cheeseburger, single patty, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "ice_cream_wikimedia.jpg",
+    "image": "test/fixtures/images/ice_cream_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/2/2e/Ice_cream_with_whipped_cream%2C_chocolate_syrup%2C_and_a_wafer.jpg",
+    "expected_label": "ice_cream",
+    "notes": "Ice cream sundae with toppings",
+    "ground_truth": {
+      "calories": 207,
+      "mass": 100,
+      "protein": 4,
+      "fat": 11,
+      "carbs": 24,
+      "source": "USDA FDC 171287 (vanilla ice cream, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "pad_thai_wikimedia.jpg",
+    "image": "test/fixtures/images/pad_thai_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/7/7c/Pad_Thai_with_chicken_and_vegetables.jpg",
+    "expected_label": "pad_thai",
+    "notes": "Pad Thai with chicken and vegetables",
+    "ground_truth": {
+      "calories": 170,
+      "mass": 100,
+      "protein": 5,
+      "fat": 6,
+      "carbs": 23,
+      "source": "USDA estimated; typical restaurant pad thai ~150-200 kcal/100g"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "pancakes_wikimedia.jpg",
+    "image": "test/fixtures/images/pancakes_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/4/40/Food_Pancakes.jpg",
+    "expected_label": "pancakes",
+    "notes": "Stack of pancakes with butter and syrup",
+    "ground_truth": {
+      "calories": 227,
+      "mass": 100,
+      "protein": 6,
+      "fat": 10,
+      "carbs": 28,
+      "source": "USDA FDC 168758 (plain pancake, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "pizza_wikimedia.jpg",
+    "image": "test/fixtures/images/pizza_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/a/a3/Eq_it-na_pizza-margherita_sep2005_sml.jpg",
+    "expected_label": "pizza",
+    "notes": "Margherita pizza, top-down view",
+    "ground_truth": {
+      "calories": 266,
+      "mass": 100,
+      "protein": 11,
+      "fat": 10,
+      "carbs": 33,
+      "source": "USDA FDC 17329229 (restaurant cheese pizza, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "ramen_wikimedia.jpg",
+    "image": "test/fixtures/images/ramen_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/7/77/Tonkotsu_ramen_with_chashu_pork.jpg",
+    "expected_label": "ramen",
+    "notes": "Tonkotsu ramen with chashu pork",
+    "ground_truth": {
+      "calories": 110,
+      "mass": 100,
+      "protein": 3,
+      "fat": 4,
+      "carbs": 16,
+      "source": "USDA estimated; ramen varies widely by broth/toppings"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "steak_wikimedia.jpg",
+    "image": "test/fixtures/images/steak_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/3/3c/Grilled_rib_eye_steak_with_vegetables.jpg",
+    "expected_label": "steak",
+    "notes": "Grilled rib eye steak with vegetables",
+    "ground_truth": {
+      "calories": 271,
+      "mass": 100,
+      "protein": 25,
+      "fat": 19,
+      "carbs": 0,
+      "source": "USDA FDC 168636 (rib eye steak, separable lean+fat, broiled, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "sushi_wikimedia.jpg",
+    "image": "test/fixtures/images/sushi_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/8/8b/Sushi_platter.jpg",
+    "expected_label": "sushi",
+    "notes": "Assorted sushi platter",
+    "ground_truth": {
+      "calories": 145,
+      "mass": 100,
+      "protein": 7,
+      "fat": 1,
+      "carbs": 28,
+      "source": "USDA FDC 2342411 (California roll, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "tacos_wikimedia.jpg",
+    "image": "test/fixtures/images/tacos_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/7/73/001_Tacos_de_carnitas%2C_carne_asada_y_al_pastor.jpg",
+    "expected_label": "tacos",
+    "notes": "Assorted Mexican tacos",
+    "ground_truth": {
+      "calories": 226,
+      "mass": 100,
+      "protein": 11,
+      "fat": 12,
+      "carbs": 20,
+      "source": "USDA FDC 2342495 (beef taco, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  },
+  {
+    "id": "waffles_wikimedia.jpg",
+    "image": "test/fixtures/images/waffles_wikimedia.jpg",
+    "source": "wikimedia",
+    "source_url": "https://upload.wikimedia.org/wikipedia/commons/5/5b/Waffles_with_Strawberries.jpg",
+    "expected_label": "waffles",
+    "notes": "Waffles with strawberries",
+    "ground_truth": {
+      "calories": 291,
+      "mass": 100,
+      "protein": 8,
+      "fat": 14,
+      "carbs": 33,
+      "source": "USDA FDC 2342489 (plain waffle, per 100g)"
+    },
+    "download_error": "[Errno 13] Permission denied: 'C:\\\\ssl-keys.log'"
+  }
+]
