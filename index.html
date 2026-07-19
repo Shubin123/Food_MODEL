@@ -28,6 +28,14 @@
       <label for="modelUrl">Model file (.onnx)</label>
       <input id="modelUrl" type="text" placeholder="model.onnx" value="model.onnx" />
 
+      <div class="model-toolbar">
+        <span id="cacheStatus" class="cache-status">Checking cache…</span>
+        <button id="downloadBtn" class="download-btn">Download for offline use</button>
+      </div>
+      <div id="progressBar" class="progress-bar hidden">
+        <div id="progressFill" class="progress-bar-fill" style="width: 0%"></div>
+      </div>
+
       <label for="modelId">Model architecture</label>
       <select id="modelId"></select>
 
@@ -55,6 +63,7 @@
 
   <script src="nutrition.js"></script>
   <script src="models.js"></script>
+  <script src="model-cache.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

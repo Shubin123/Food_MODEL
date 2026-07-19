@@ -80,3 +80,58 @@ button:hover { filter: brightness(1.05); }
 .entry-meta { color: var(--muted); font-size: 0.8rem; }
 
 #resultAlt { color: var(--muted); font-size: 0.85rem; padding-left: 1.1rem; }
+
+/* Model cache toolbar – status + download button side by side */
+.model-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0.4rem 0 0;
+  gap: 0.75rem;
+}
+
+.cache-status {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.cache-status.cached { color: var(--accent); }
+
+.download-btn {
+  margin-top: 0;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.download-btn:hover { color: var(--text); border-color: var(--muted); }
+.download-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* Download progress bar */
+.progress-bar {
+  width: 100%;
+  height: 22px;
+  background: #0b1220;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 0.6rem;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  color: #06281a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  border-radius: 5px 0 0 5px;
+  transition: width 0.15s linear;
+  white-space: nowrap;
+  padding: 0 0.35rem;
+}
