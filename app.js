@@ -54,7 +54,10 @@
     if (CM && CM.available) {
       try {
         if (await CM.isCached(modelUrl)) {
+          console.log('[app] Cache HIT for', modelUrl);
           buffer = await CM.loadFromCache(modelUrl);
+        } else {
+          console.log('[app] Cache MISS for', modelUrl);
         }
       } catch (e) { /* fall through to network */ }
     }
@@ -114,7 +117,7 @@
     }
 
     try {
-      const modelUrl = $('modelUrl').value.trim() || 'model.onnx';
+      const modelUrl = $('modelUrl').value.trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
       const specId = currentSpecId();
       if (!session || sessionKey !== `${modelUrl}|${specId}`) {
         setStatus('Loading model…');
@@ -296,7 +299,7 @@
       return;
     }
 
-    var modelUrl = ($('modelUrl').value || '').trim() || 'model.onnx';
+    var modelUrl = ($('modelUrl').value || '').trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
     var cached = false;
     try { cached = await CM.isCached(modelUrl); } catch (e) { /* ignore */ }
 
@@ -319,7 +322,7 @@
     var CM = FT.modelCache;
     if (!CM || !CM.available) return;
 
-    var modelUrl = ($('modelUrl').value || '').trim() || 'model.onnx';
+    var modelUrl = ($('modelUrl').value || '').trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
     var progBar = $('progressBar');
     var progFill = $('progressFill');
     if (progBar) progBar.classList.remove('hidden');
