@@ -76,7 +76,7 @@ def _compute_metrics(preds, targets):
             "rmse": round(float(np.sqrt((abs_err ** 2).mean())), 3),
             "signed_bias": round(float((p_f - t_f).mean()), 3),
             "median_abs_error": round(float(np.median(abs_err)), 3),
-            "r2": round(float(1 - ((p_f - t_f) ** 2).sum() / ((t_f - t_f.mean()) ** 2).sum())), 4),
+            "r2": round(float(1 - ((p_f - t_f) ** 2).sum() / ((t_f - t_f.mean()) ** 2).sum()), 4),
         }
 
     # Combined MAE (sum of all 5 per-task MAEs)
