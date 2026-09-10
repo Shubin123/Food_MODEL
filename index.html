@@ -3,62 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A private, in-browser food photo tracker with editable nutrition estimates." />
   <title>Food Tracker</title>
   <link rel="stylesheet" href="styles.css" />
-  <!-- ONNX Runtime Web from CDN: runs the nutrition model entirely in-browser. -->
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 </head>
 <body>
   <main class="container">
-    <h1>🍎 Food Tracker</h1>
-    <p class="subtitle">
-      Identify food from a photo, then review the estimated portion before
-      logging calories and macros. Results are estimates, not medical advice.
-    </p>
+    <header class="masthead">
+      <p class="eyebrow">Food photo estimates</p>
+      <h1>Food Tracker</h1>
+      <p class="subtitle">Choose a meal photo, review the detected food, and set the portion before adding it to your log.</p>
+    </header>
 
-    <section class="card">
-      <h2>Analyze a photo</h2>
-
-      <label for="imageUrl">Photo URL <span class="hint">(for testing)</span></label>
-      <input id="imageUrl" type="url" placeholder="https://example.com/food.jpg" />
-
-      <label for="fileInput">…or upload a file</label>
+    <section class="card" aria-labelledby="capture-title">
+      <h2 id="capture-title">Start with a photo</h2>
+      <label for="fileInput">Meal photo</label>
       <input id="fileInput" type="file" accept="image/*" />
+      <p class="hint">Images stay in this browser. The first estimate downloads the model and may take a moment.</p>
 
-      <label for="modelUrl">Model file (.onnx)</label>
-      <input id="modelUrl" type="text" placeholder="https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx" value="https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx" />
+      <details class="advanced">
+        <summary>Model and testing options</summary>
+        <label for="imageUrl">Photo URL</label>
+        <input id="imageUrl" type="url" placeholder="https://example.com/food.jpg" />
 
-      <div class="model-toolbar">
-        <span id="cacheStatus" class="cache-status">Checking cache…</span>
-        <button id="downloadBtn" class="download-btn">Download for offline use</button>
-      </div>
-      <div id="progressBar" class="progress-bar hidden">
-        <div id="progressFill" class="progress-bar-fill" style="width: 0%"></div>
-      </div>
+        <label for="modelUrl">Model file</label>
+        <input id="modelUrl" type="text" value="https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx" />
 
-      <label for="modelId">Model architecture</label>
-      <select id="modelId"></select>
+        <label for="modelId">Model architecture</label>
+        <select id="modelId"></select>
 
-      <button id="analyzeBtn">Analyze</button>
-      <div id="status" class="status"></div>
+        <div class="model-toolbar">
+          <span id="cacheStatus" class="cache-status">Checking cache…</span>
+          <button id="downloadBtn" class="download-btn" type="button">Download for offline use</button>
+        </div>
+        <div id="progressBar" class="progress-bar hidden" aria-live="polite">
+          <div id="progressFill" class="progress-bar-fill" style="width: 0%"></div>
+        </div>
+      </details>
+
+      <button id="analyzeBtn" type="button">Estimate nutrition</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
     </section>
 
-    <section class="card hidden" id="resultCard">
-      <h2>Result</h2>
-      <img id="resultImg" class="hidden" alt="analyzed food" />
+    <section class="card hidden" id="resultCard" aria-labelledby="result-title">
+      <h2 id="result-title">Review estimate</h2>
+      <img id="resultImg" class="hidden" alt="Analyzed meal" />
       <div id="resultBody"></div>
       <div id="portionEditor" class="portion-editor hidden">
-        <label for="portionGrams">Portion (grams)</label>
+        <label for="portionGrams">Portion in grams</label>
         <input id="portionGrams" type="number" min="1" step="1" inputmode="decimal" />
         <p id="estimateNote" class="hint">Adjust the portion to recalculate this estimate.</p>
       </div>
-      <button id="logBtn">Add to log</button>
+      <button id="logBtn" type="button">Add to today’s log</button>
     </section>
 
-    <section class="card">
-      <h2>Food log <span id="totalCalories" class="total">0 kcal</span></h2>
-      <ul id="entries"></ul>
+    <section class="card" aria-labelledby="log-title">
+      <div class="section-heading">
+        <h2 id="log-title">Today’s log</h2>
+        <span id="totalCalories" class="total">0 kcal</span>
+      </div>
+      <ul id="entries" aria-live="polite"></ul>
     </section>
+
+    <p class="disclaimer">Nutrition results are reference estimates, not medical advice.</p>
   </main>
 
   <script src="nutrition.js"></script>

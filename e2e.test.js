@@ -10,7 +10,7 @@ const { once } = require('node:events');
 const puppeteer = require('puppeteer');
 
 const root = __dirname;
-const port = 4173;
+const port = 0;
 const fakeOrt = `
   window.__modelLoads = 0;
   window.ort = {
@@ -40,6 +40,7 @@ async function main() {
   const app = server();
   app.listen(port, '127.0.0.1');
   await once(app, 'listening');
+  const address = app.address();
   const browser = await puppeteer.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -49,7 +50,7 @@ async function main() {
       if (request.url().includes('onnxruntime-web')) request.respond({ status: 200, contentType: 'application/javascript', body: fakeOrt });
       else request.continue();
     });
-    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle0' });
+    await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: 'networkidle0' });
 
     // New contract: a detected food must expose an editable portion and update calories.
     assert.ok(await page.$('#portionGrams'), 'portion input is available');
@@ -78,7 +79,7 @@ async function main() {
     assert.match(await page.$eval('#totalCalories', (el) => el.textContent), /226 kcal/);
 
     // The browser unit suite is also part of the automated gate.
-    await page.goto(`http://127.0.0.1:${port}/test.html`, { waitUntil: 'networkidle0' });
+    await page.goto(`http://127.0.0.1:${address.port}/test.html`, { waitUntil: 'networkidle0' });
     await page.click('#runBtn');
     await page.waitForFunction(() => /^\d+\/\d+ passed$/.test(document.querySelector('#summary').textContent));
     const summary = await page.$eval('#summary', (el) => el.textContent);
