@@ -41,7 +41,10 @@ async function main() {
   app.listen(port, '127.0.0.1');
   await once(app, 'listening');
   const address = app.address();
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream']
+  });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 900, height: 900 });
@@ -57,12 +60,13 @@ async function main() {
     await page.$eval('#fileInput', (input) => {
       const svg = new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="pink"/></svg>'], { type: 'image/svg+xml' });
       const dt = new DataTransfer(); dt.items.add(new File([svg], 'meal.svg', { type: 'image/svg+xml' })); input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    await page.click('#analyzeBtn');
+    // Choosing a photo analyzes it immediately, no extra click.
     await page.waitForSelector('#resultCard:not(.hidden)');
-    assert.match(await page.$eval('#resultBody', (el) => el.textContent), /Donuts/);
+    assert.match(await page.$eval('#result-title', (el) => el.textContent), /Donuts/);
     assert.equal(await page.$eval('#portionGrams', (el) => el.value), '100');
-    assert.match(await page.$eval('#resultBody', (el) => el.textContent), /452 kcal/);
+    assert.equal(await page.$eval('#resultKcal', (el) => el.textContent), '452');
     const timing = await page.$eval('#status', (el) => Number((el.textContent.match(/(\d+) ms/) || [])[1]));
     assert.ok(Number.isFinite(timing) && timing < 1000, `mocked inference should stay responsive (was ${timing} ms)`);
 
@@ -73,9 +77,29 @@ async function main() {
     assert.equal(await page.evaluate(() => window.__modelLoads), 2);
 
     await page.$eval('#portionGrams', (el) => { el.value = '50'; el.dispatchEvent(new Event('input', { bubbles: true })); });
-    assert.match(await page.$eval('#resultBody', (el) => el.textContent), /226 kcal/);
+    assert.equal(await page.$eval('#resultKcal', (el) => el.textContent), '226');
+    await page.click('.step[data-step="10"]');
+    assert.equal(await page.$eval('#portionGrams', (el) => el.value), '60');
+    await page.click('.step[data-step="-10"]');
+    assert.equal(await page.$eval('#resultKcal', (el) => el.textContent), '226');
     await page.click('#logBtn');
-    assert.match(await page.$eval('#entries', (el) => el.textContent), /Donuts - 226 kcal/);
+    assert.match(await page.$eval('#entries', (el) => el.textContent), /Donuts[\s\S]*226 kcal/);
+    assert.match(await page.$eval('#totalCalories', (el) => el.textContent), /226 kcal/);
+    assert.ok(await page.$('#resultCard.hidden'), 'result closes after logging');
+    assert.ok(await page.$('#stagePreview.hidden'), 'stage resets after logging');
+
+    // Camera: capture a frame from Chromium's fake device and analyze it.
+    await page.click('#cameraBtn');
+    await page.waitForSelector('#shutterBtn:not([disabled])');
+    await page.click('#shutterBtn');
+    await page.waitForSelector('#camera.hidden');
+    await page.waitForSelector('#resultCard:not(.hidden)');
+    assert.equal(await page.evaluate(() => document.querySelector('#cameraVideo').srcObject), null, 'camera stream is released');
+    await page.click('#logBtn');
+    assert.match(await page.$eval('#totalCalories', (el) => el.textContent), /678 kcal/);
+
+    // Entries can be removed.
+    await page.click('#entries .entry-del');
     assert.match(await page.$eval('#totalCalories', (el) => el.textContent), /226 kcal/);
 
     // The browser unit suite is also part of the automated gate.
