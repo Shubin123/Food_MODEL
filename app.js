@@ -7,10 +7,20 @@
   const FT = (global.FT = global.FT || {});
   const M = FT.models;
   const STORE_KEY = 'food-tracker-entries';
+  const DEFAULT_MODEL_URL = 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
 
   let session = null;
   let activeSpec = null;
   let sessionKey = null;
+
+  // In-flight model load, shared so warm-up and analysis never load twice.
+  let loading = null;
+  let loadingKey = null;
+
+  // Current photo: { blob } from upload/camera/drop/paste, or { url }.
+  let source = null;
+  let previewUrl = null;
+  let runId = 0;
 
   function $(id) { return document.getElementById(id); }
 
@@ -92,47 +102,80 @@
     return session;
   }
 
+  function currentModelUrl() {
+    return ($('modelUrl').value || '').trim() || DEFAULT_MODEL_URL;
+  }
+
+  function currentSpecId() {
+    const sel = $('modelId');
+    return sel && sel.value ? sel.value : 'swin-food101';
+  }
+
+  function onModelProgress(p) {
+    const pct = (p && p.percent) || 0;
+    $('progressFill').style.width = pct + '%';
+    $('progressFill').textContent = pct + '%';
+  }
+
+  // Loads the selected model, sharing any load already in flight.
+  async function ensureModel() {
+    const modelUrl = currentModelUrl();
+    const specId = currentSpecId();
+    const key = `${modelUrl}|${specId}`;
+    if (session && sessionKey === key) return session;
+    if (loading && loadingKey === key) return loading;
+
+    const CM = FT.modelCache;
+    const wasCached = CM && CM.available && await CM.isCached(modelUrl).catch(() => false);
+    if (!wasCached) $('progressBar').classList.remove('hidden');
+    loadingKey = key;
+    loading = loadModel(modelUrl, specId, onModelProgress).finally(() => {
+      if (loadingKey === key) { loading = null; loadingKey = null; }
+      $('progressBar').classList.add('hidden');
+      updateCacheStatus();
+    });
+    return loading;
+  }
+
+  // Starts loading the model in the background (e.g. while the camera is open).
+  function warmModel() {
+    if (!global.ort) return;
+    ensureModel().catch(() => { /* surfaced again on analyze */ });
+  }
+
   async function analyze() {
-    const status = $('status');
-    setStatus('Preparing…');
+    const run = ++runId;
+    const stage = $('stage');
     $('resultCard').classList.add('hidden');
 
-    const url = $('imageUrl').value.trim();
+    // Programmatically populated file inputs don't fire `change`.
     const file = $('fileInput').files && $('fileInput').files[0];
+    if (!source && file) setPreview({ blob: file });
+    const url = $('imageUrl').value.trim();
+    if (!source && url) setPreview({ url });
+    if (!source) return setStatus('Take or choose a photo first.', true);
+
     let imageEl;
+    setStatus('Reading photo…');
+    stage.classList.add('busy');
     try {
-      if (file) {
-        const objUrl = URL.createObjectURL(file);
-        imageEl = await loadImage(objUrl);
-        showPreview(objUrl);
-      } else if (url) {
-        const dataUrl = await urlToDataUrl(url);
-        imageEl = await loadImage(dataUrl);
-        showPreview(url);
+      if (source.blob) {
+        imageEl = await loadImage(previewUrl);
       } else {
-        return setStatus('Provide a photo URL or upload a file.', true);
+        imageEl = await loadImage(await urlToDataUrl(source.url));
       }
     } catch (err) {
+      stage.classList.remove('busy');
       return setStatus(err.message, true);
     }
 
     try {
-      const modelUrl = $('modelUrl').value.trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
-      const specId = currentSpecId();
-      if (!session || sessionKey !== `${modelUrl}|${specId}`) {
+      if (!session || sessionKey !== `${currentModelUrl()}|${currentSpecId()}`) {
         setStatus('Loading model…');
-        const progBar = $('progressBar');
-        const progFill = $('progressFill');
-        const wasCached = FT.modelCache && FT.modelCache.available &&
-          await FT.modelCache.isCached(modelUrl);
-        if (!wasCached && progBar) progBar.classList.remove('hidden');
-        await loadModel(modelUrl, specId, function onProg(_a) {
-          var pct = (_a && _a.percent) || 0;
-          if (progFill) { progFill.style.width = pct + '%'; progFill.textContent = pct + '%'; }
-        });
-        if (progBar) progBar.classList.add('hidden');
-        updateCacheStatus();
+        await ensureModel();
       }
+      if (run !== runId) return;
+      setStatus('Analyzing…');
       const pre = M.preprocessImage(imageEl, activeSpec);
       const tensor = new global.ort.Tensor('float32', pre.data, pre.dims);
       const feeds = {};
@@ -141,6 +184,7 @@
       const t0 = performance.now();
       const results = await session.run(feeds);
       const dt = Math.round(performance.now() - t0);
+      if (run !== runId) return;
 
       let raw;
       if (activeSpec.type === 'classifier') {
@@ -159,16 +203,14 @@
       const nutrition = M.postprocess(raw, activeSpec);
       nutrition.model = activeSpec.label;
       nutrition.inferenceMs = dt;
+      nutrition.thumb = makeThumb(imageEl);
       renderResult(nutrition);
       setStatus(`Ran locally in ${dt} ms · ${activeSpec.label}`);
     } catch (err) {
-      setStatus(err.message, true);
+      if (run === runId) setStatus(err.message, true);
+    } finally {
+      if (run === runId) stage.classList.remove('busy');
     }
-  }
-
-  function currentSpecId() {
-    const sel = $('modelId');
-    return sel && sel.value ? sel.value : 'swin-food101';
   }
 
   function loadImage(src) {
@@ -181,32 +223,63 @@
     });
   }
 
-  function renderResult(n) {
-    $('resultCard').classList.remove('hidden');
-    const rows = [];
-    if (n.name) {
-      const conf = typeof n.confidence === 'number' ? ` (${n.confidence}%)` : '';
-      rows.push(['Detected', `${n.name}${conf}`]);
+  // Small square JPEG kept with the log entry.
+  function makeThumb(img) {
+    try {
+      const size = 96;
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      const s = Math.min(w, h);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      canvas.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, size, size);
+      return canvas.toDataURL('image/jpeg', 0.7);
+    } catch (e) {
+      return null;
     }
-    rows.push(
-      ['Calories', `${n.calories} kcal`],
-      ['Mass', `${n.mass} g`],
-      ['Protein', `${n.protein} g`],
-      ['Fat', `${n.fat} g`],
-      ['Carbs', `${n.carbs} g`]
-    );
-    $('resultBody').innerHTML = rows
-      .map(([k, v]) => `<p><strong>${k}:</strong> <span>${v}</span></p>`)
-      .join('');
+  }
+
+  const MACROS = [
+    ['protein', 'Protein', 'var(--protein)', 4],
+    ['fat', 'Fat', 'var(--fat)', 9],
+    ['carbs', 'Carbs', 'var(--carbs)', 4]
+  ];
+
+  function renderResult(n, keepInput) {
+    $('resultCard').classList.remove('hidden');
+    $('result-title').textContent = n.name || 'Estimated meal';
+    $('resultConfidence').textContent = typeof n.confidence === 'number'
+      ? `${n.confidence}% match · ${n.mass} g` : `${n.mass} g`;
+    $('resultKcal').textContent = String(n.calories);
+
+    const body = $('resultBody');
+    body.innerHTML = '';
+    const bar = document.createElement('div');
+    bar.className = 'macro-bar';
+    MACROS.forEach(([key, label, color, kcalPerGram]) => {
+      const cell = document.createElement('div');
+      cell.className = 'macro';
+      cell.style.setProperty('--dot', color);
+      cell.innerHTML = '<div class="macro-label"></div><div class="macro-value"></div>';
+      cell.children[0].textContent = label;
+      cell.children[1].textContent = `${n[key]} g`;
+      body.appendChild(cell);
+
+      const seg = document.createElement('span');
+      seg.style.setProperty('--dot', color);
+      seg.style.flexGrow = String(Math.max(0, n[key] * kcalPerGram));
+      bar.appendChild(seg);
+    });
+    body.appendChild(bar);
+
     FT._lastResult = n;
     const editor = $('portionEditor');
-    const portion = $('portionGrams');
     if (n.mass > 0) {
-      portion.value = String(Math.round(n.mass));
+      if (!keepInput) $('portionGrams').value = String(Math.round(n.mass));
       editor.classList.remove('hidden');
       $('estimateNote').textContent = n.label
-        ? 'Calories and macros are scaled from the detected food’s reference nutrition. Review the grams before logging.'
-        : 'Calories and macros are model estimates. Adjusting grams scales this result proportionally.';
+        ? 'Scaled from the detected food’s reference nutrition. Check the grams before logging.'
+        : 'Model estimate. Adjusting grams scales it proportionally.';
     } else {
       editor.classList.add('hidden');
     }
@@ -222,10 +295,7 @@
     const current = FT._lastResult;
     if (!current) return;
     const grams = Number($('portionGrams').value);
-    if (!Number.isFinite(grams) || grams <= 0) {
-      setStatus('Portion must be greater than 0 grams.', true);
-      return;
-    }
+    if (!Number.isFinite(grams) || grams <= 0) return;
     let next;
     if (current.label && FT.nutrition) {
       next = FT.nutrition.nutritionForLabelAndMass(current.label, grams);
@@ -237,14 +307,158 @@
       };
     }
     Object.assign(current, roundNutrition(next));
-    renderResult(current);
+    renderResult(current, true);
   }
 
-  function showPreview(src) {
-    const img = $('resultImg');
-    img.src = src;
-    img.classList.remove('hidden');
+  function stepPortion(delta) {
+    const input = $('portionGrams');
+    const value = Math.max(1, Math.round((Number(input.value) || 0) + delta));
+    input.value = String(value);
+    updatePortion();
   }
+
+  /* ---------- Photo sources ---------- */
+
+  function setPreview(next) {
+    if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    source = next;
+    previewUrl = next.blob ? URL.createObjectURL(next.blob) : next.url;
+    $('previewImg').src = previewUrl;
+    $('stageEmpty').classList.add('hidden');
+    $('stagePreview').classList.remove('hidden');
+  }
+
+  function usePhoto(next) {
+    if (next.blob && next.blob.type && !next.blob.type.startsWith('image/')) {
+      return setStatus('That file isn’t an image.', true);
+    }
+    setPreview(next);
+    analyze();
+  }
+
+  function resetStage() {
+    runId++;
+    if (previewUrl && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    source = null;
+    previewUrl = null;
+    FT._lastResult = null;
+    $('previewImg').removeAttribute('src');
+    $('stagePreview').classList.add('hidden');
+    $('stageEmpty').classList.remove('hidden');
+    $('stage').classList.remove('busy');
+    $('resultCard').classList.add('hidden');
+    $('fileInput').value = '';
+    $('cameraInput').value = '';
+    $('imageUrl').value = '';
+  }
+
+  function bindDropAndPaste() {
+    const stage = $('stage');
+    let depth = 0;
+    stage.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; stage.classList.add('dragging'); });
+    stage.addEventListener('dragover', (e) => e.preventDefault());
+    stage.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; stage.classList.remove('dragging'); } });
+    stage.addEventListener('drop', (e) => {
+      e.preventDefault();
+      depth = 0;
+      stage.classList.remove('dragging');
+      const f = e.dataTransfer && e.dataTransfer.files[0];
+      if (f) usePhoto({ blob: f });
+    });
+    document.addEventListener('paste', (e) => {
+      if (e.target.closest && e.target.closest('input, textarea')) return;
+      const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.type.startsWith('image/'));
+      if (item) usePhoto({ blob: item.getAsFile() });
+    });
+  }
+
+  /* ---------- Camera ---------- */
+
+  let stream = null;
+  let facing = 'environment';
+
+  function hasCameraApi() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  }
+
+  async function openCamera() {
+    if (!hasCameraApi()) { $('cameraInput').click(); return; }
+    $('camera').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    warmModel();
+    await startStream();
+  }
+
+  async function startStream() {
+    stopStream();
+    const msg = $('cameraMsg');
+    const shutter = $('shutterBtn');
+    msg.classList.add('hidden');
+    shutter.disabled = true;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+        audio: false
+      });
+      if ($('camera').classList.contains('hidden')) return stopStream(); // closed while waiting
+      const video = $('cameraVideo');
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      const settings = stream.getVideoTracks()[0].getSettings();
+      $('camera').classList.toggle('mirrored', (settings.facingMode || facing) === 'user');
+      shutter.disabled = false;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      $('cameraFlip').classList.toggle('off', devices.filter((d) => d.kind === 'videoinput').length < 2);
+    } catch (err) {
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      msg.innerHTML = '';
+      msg.append(denied ? 'Camera access was blocked.' : 'No camera is available.', document.createElement('br'));
+      const fallback = document.createElement('button');
+      fallback.type = 'button';
+      fallback.className = 'btn ghost small';
+      fallback.style.cssText = 'margin-top:12px;color:#fff;border-color:rgb(255 255 255 / 40%)';
+      fallback.textContent = 'Choose a photo instead';
+      fallback.addEventListener('click', () => { closeCamera(); $('fileInput').click(); });
+      msg.append(fallback);
+      msg.classList.remove('hidden');
+    }
+  }
+
+  function stopStream() {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+    $('cameraVideo').srcObject = null;
+  }
+
+  function closeCamera() {
+    stopStream();
+    $('camera').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function capture() {
+    const video = $('cameraVideo');
+    if (!stream || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const cam = $('camera');
+    cam.classList.remove('flash');
+    void cam.offsetWidth;
+    cam.classList.add('flash');
+    canvas.toBlob((blob) => {
+      closeCamera();
+      if (blob) usePhoto({ blob: new File([blob], 'camera.jpg', { type: 'image/jpeg' }) });
+    }, 'image/jpeg', 0.92);
+  }
+
+  function flipCamera() {
+    facing = facing === 'environment' ? 'user' : 'environment';
+    startStream();
+  }
+
+  /* ---------- Log ---------- */
 
   function logEntry() {
     if (!FT._lastResult) return;
@@ -253,28 +467,59 @@
     entries.push({
       calories: n.calories, mass: n.mass, protein: n.protein,
       fat: n.fat, carbs: n.carbs, name: n.name || null,
-      model: n.model, at: new Date().toISOString()
+      model: n.model, thumb: n.thumb || null, at: new Date().toISOString()
     });
+    try { writeStore(entries); }
+    catch (e) {
+      // Storage full: keep the entry, drop its thumbnail.
+      entries[entries.length - 1].thumb = null;
+      writeStore(entries);
+    }
+    resetStage();
+    renderEntries();
+    setStatus(`Added ${n.name || 'meal'} · ${n.calories} kcal`);
+  }
+
+  function deleteEntry(index) {
+    const entries = readStore();
+    entries.splice(index, 1);
     writeStore(entries);
-    FT._lastResult = null;
-    $('resultCard').classList.add('hidden');
-    $('imageUrl').value = '';
-    if ($('fileInput')) $('fileInput').value = '';
     renderEntries();
   }
 
+  function isToday(iso) {
+    const d = new Date(iso);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
   function renderEntries() {
-    const entries = readStore();
-    const total = entries.reduce((s, e) => s + (Number(e.calories) || 0), 0);
-    $('totalCalories').textContent = `${total} kcal`;
+    const today = readStore().map((e, i) => ({ e, i })).filter(({ e }) => isToday(e.at));
+    const sum = (key) => Math.round(today.reduce((s, { e }) => s + (Number(e[key]) || 0), 0));
+    $('totalCalories').textContent = `${sum('calories')} kcal`;
+    $('totalMacros').textContent = `P ${sum('protein')} · F ${sum('fat')} · C ${sum('carbs')} g`;
+    $('emptyLog').classList.toggle('hidden', today.length > 0);
+
     const ul = $('entries');
     ul.innerHTML = '';
-    entries.slice().reverse().forEach((e) => {
+    today.reverse().forEach(({ e, i }) => {
       const li = document.createElement('li');
-      const title = e.name ? `${e.name} - ${e.calories} kcal` : `${e.calories} kcal`;
+      li.className = 'entry';
       li.innerHTML =
-        `<div><strong>${title}</strong>` +
-        `<div class="entry-meta">P ${e.protein} · F ${e.fat} · C ${e.carbs} g · ${new Date(e.at).toLocaleString()}</div></div>`;
+        '<img class="entry-thumb" alt="" />' +
+        '<div class="entry-main"><div class="entry-name"></div><div class="entry-meta"></div></div>' +
+        '<span class="entry-kcal"></span>' +
+        '<button class="entry-del" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+      const thumb = li.querySelector('.entry-thumb');
+      if (e.thumb) thumb.src = e.thumb; else thumb.style.visibility = 'hidden';
+      const name = e.name || 'Meal';
+      const time = new Date(e.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      li.querySelector('.entry-name').textContent = name;
+      li.querySelector('.entry-meta').textContent = `${time} · ${e.mass} g · P ${e.protein} · F ${e.fat} · C ${e.carbs}`;
+      li.querySelector('.entry-kcal').textContent = `${e.calories} kcal`;
+      const del = li.querySelector('.entry-del');
+      del.setAttribute('aria-label', `Remove ${name}`);
+      del.addEventListener('click', () => deleteEntry(i));
       ul.appendChild(li);
     });
   }
@@ -299,7 +544,7 @@
       return;
     }
 
-    var modelUrl = ($('modelUrl').value || '').trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
+    var modelUrl = currentModelUrl();
     var cached = false;
     try { cached = await CM.isCached(modelUrl); } catch (e) { /* ignore */ }
 
@@ -307,7 +552,7 @@
       var sizeBytes = null;
       try { sizeBytes = await CM.getCachedSize(modelUrl); } catch (e) { /* ignore */ }
       var sizeStr = sizeBytes ? (sizeBytes / (1024 * 1024)).toFixed(1) + ' MB' : 'cached';
-      statusEl.textContent = '✓ Cached (' + sizeStr + ')';
+      statusEl.textContent = '✓ Available offline (' + sizeStr + ')';
       statusEl.className = 'cache-status cached';
       if (dlBtn) { dlBtn.textContent = '✓ Cached'; dlBtn.disabled = true; }
     } else {
@@ -322,36 +567,61 @@
     var CM = FT.modelCache;
     if (!CM || !CM.available) return;
 
-    var modelUrl = ($('modelUrl').value || '').trim() || 'https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx';
     var progBar = $('progressBar');
-    var progFill = $('progressFill');
-    if (progBar) progBar.classList.remove('hidden');
-
+    progBar.classList.remove('hidden');
     try {
-      await CM.downloadAndCache(modelUrl, function onProg(_a) {
-        var pct = (_a && _a.percent) || 0;
-        if (progFill) { progFill.style.width = pct + '%'; progFill.textContent = pct + '%'; }
-      });
+      await CM.downloadAndCache(currentModelUrl(), onModelProgress);
       setStatus('Model cached for offline use.');
       updateCacheStatus();
     } catch (err) {
       setStatus(err.message, true);
     } finally {
-      if (progBar) progBar.classList.add('hidden');
+      progBar.classList.add('hidden');
     }
   }
 
   function init() {
     if (!$('analyzeBtn')) return;
     $('analyzeBtn').addEventListener('click', analyze);
+    $('retakeBtn').addEventListener('click', () => { resetStage(); setStatus(''); });
     $('logBtn').addEventListener('click', logEntry);
     $('portionGrams').addEventListener('input', updatePortion);
+    document.querySelectorAll('.step').forEach((b) => {
+      b.addEventListener('click', () => stepPortion(Number(b.dataset.step)));
+    });
+
+    // Photo sources
+    $('fileInput').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) usePhoto({ blob: f }); });
+    $('cameraInput').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) usePhoto({ blob: f }); });
+    $('uploadBtn').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); }
+    });
+    $('uploadBtn').tabIndex = 0;
+    $('urlBtn').addEventListener('click', () => {
+      const url = $('imageUrl').value.trim();
+      if (url) usePhoto({ url });
+    });
+    bindDropAndPaste();
+
+    // Camera
+    $('cameraBtn').addEventListener('click', openCamera);
+    $('cameraClose').addEventListener('click', closeCamera);
+    $('shutterBtn').addEventListener('click', capture);
+    $('cameraFlip').addEventListener('click', flipCamera);
+    document.addEventListener('keydown', (e) => {
+      if ($('camera').classList.contains('hidden')) return;
+      if (e.key === 'Escape') closeCamera();
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); capture(); }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && stream) closeCamera();
+    });
+
     // Cache controls
-    var dlBtn = $('downloadBtn');
-    if (dlBtn) dlBtn.addEventListener('click', downloadForOffline);
-    var mu = $('modelUrl');
-    if (mu) mu.addEventListener('input', updateCacheStatus);
+    $('downloadBtn').addEventListener('click', downloadForOffline);
+    $('modelUrl').addEventListener('input', updateCacheStatus);
     updateCacheStatus();
+
     // populate model selector
     const sel = $('modelId');
     if (sel) {
@@ -368,7 +638,7 @@
   FT.app = {
     loadModel, analyze, urlToDataUrl, fileToDataUrl,
     renderEntries, readStore, writeStore, updatePortion,
-    updateCacheStatus, downloadForOffline,
+    updateCacheStatus, downloadForOffline, openCamera, closeCamera,
     _getSession: () => session
   };
 

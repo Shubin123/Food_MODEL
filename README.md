@@ -1,8 +1,12 @@
 # Food Tracker
 
-A small, client-side food photo tracker. Choose an image, review the detected
-food and its estimated nutrition, adjust the portion in grams, then add it to
-the local log.
+A small, client-side food photo tracker. Snap a photo with the in-app camera
+(or upload, drag and drop, or paste one). It's analyzed as soon as it's chosen.
+Review the detected food and its estimated nutrition, adjust the portion in
+grams, then add it to today's log.
+
+The camera uses `getUserMedia`, which needs HTTPS or `localhost`. When it isn't
+available, the Camera button falls back to the device's native photo picker.
 
 ## What the estimate means
 
@@ -31,7 +35,7 @@ npm test
 ```
 
 The browser test uses a deterministic ONNX Runtime stub. It verifies upload,
-inference flow, portion editing, logging, cache/session invalidation, and the
+camera capture (Chromium's fake video device), inference flow, portion editing, logging, cache/session invalidation, and the
 browser unit suite without downloading the production model.
 
 ## Model

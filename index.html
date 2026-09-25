@@ -2,74 +2,144 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="description" content="A private, in-browser food photo tracker with editable nutrition estimates." />
+  <meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)" />
   <title>Food Tracker</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="./app-icon.svg" />
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
-  <link rel="icon" type="image/svg+xml" href="./app-icon.svg">
-  <style>img.project-mark { display: inline-block; width: 36px !important; height: 36px !important; min-width: 36px; max-width: none !important; margin: 0 .45em 0 0 !important; padding: 0 !important; border: 0 !important; border-radius: 9px; object-fit: contain; vertical-align: middle; flex-shrink: 0; }</style>
 </head>
 <body>
-  <main class="container">
-    <header class="masthead">
-      <p class="eyebrow">Food photo estimates</p>
-      <h1><img class="project-mark" src="./app-icon.svg" alt="" width="36" height="36">Food Tracker</h1>
-      <p class="subtitle">Choose a meal photo, review the detected food, and set the portion before adding it to your log.</p>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="./app-icon.svg" alt="" width="28" height="28" />
+        <span>Food Tracker</span>
+      </div>
+      <div class="today" aria-label="Calories today">
+        <span id="totalCalories" class="today-kcal">0 kcal</span>
+        <span id="totalMacros" class="today-macros">P 0 · F 0 · C 0 g</span>
+      </div>
     </header>
 
-    <section class="card" aria-labelledby="capture-title">
-      <h2 id="capture-title">Start with a photo</h2>
-      <label for="fileInput">Meal photo</label>
-      <input id="fileInput" type="file" accept="image/*" />
-      <p class="hint">Images stay in this browser. The first estimate downloads the model and may take a moment.</p>
-
-      <details class="advanced">
-        <summary>Model and testing options</summary>
-        <label for="imageUrl">Photo URL</label>
-        <input id="imageUrl" type="url" placeholder="https://example.com/food.jpg" />
-
-        <label for="modelUrl">Model file</label>
-        <input id="modelUrl" type="text" value="https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx" />
-
-        <label for="modelId">Model architecture</label>
-        <select id="modelId"></select>
-
-        <div class="model-toolbar">
-          <span id="cacheStatus" class="cache-status">Checking cache…</span>
-          <button id="downloadBtn" class="download-btn" type="button">Download for offline use</button>
+    <!-- Capture: empty state, preview, and analyzing overlay share one stage -->
+    <section class="stage" id="stage" aria-label="Meal photo">
+      <div class="stage-empty" id="stageEmpty">
+        <svg class="stage-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-1.8A1.5 1.5 0 0 1 10.5 3.5h3a1.5 1.5 0 0 1 1.2.7L15.9 6h1.6A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+        <p class="stage-title">Snap your meal</p>
+        <p class="stage-sub">Take a photo, upload, drop, or paste an image.</p>
+        <div class="stage-actions">
+          <button id="cameraBtn" class="btn primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-1.8A1.5 1.5 0 0 1 10.5 3.5h3a1.5 1.5 0 0 1 1.2.7L15.9 6h1.6A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+            Camera
+          </button>
+          <label for="fileInput" class="btn ghost" id="uploadBtn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V14"/></svg>
+            Upload
+          </label>
         </div>
-        <div id="progressBar" class="progress-bar hidden" aria-live="polite">
-          <div id="progressFill" class="progress-bar-fill" style="width: 0%"></div>
-        </div>
-      </details>
+        <input id="fileInput" class="visually-hidden" type="file" accept="image/*" />
+        <input id="cameraInput" class="visually-hidden" type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true" />
+      </div>
 
-      <button id="analyzeBtn" type="button">Estimate nutrition</button>
+      <div class="stage-preview hidden" id="stagePreview">
+        <img id="previewImg" alt="Selected meal" />
+        <div class="scan" id="scanOverlay" aria-hidden="true"><span></span></div>
+        <div class="stage-tools">
+          <button id="retakeBtn" class="chip" type="button" aria-label="Choose another photo">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          <button id="analyzeBtn" class="chip" type="button" aria-label="Analyze again">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="drop-hint" aria-hidden="true">Drop to analyze</div>
+    </section>
+
+    <div class="status-row">
       <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="progressBar" class="progress hidden" aria-live="polite">
+        <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <section class="result hidden" id="resultCard" aria-labelledby="result-title">
+      <div class="result-head">
+        <div>
+          <h2 id="result-title" class="result-name">—</h2>
+          <p id="resultConfidence" class="result-conf"></p>
+        </div>
+        <div class="result-kcal"><span id="resultKcal">0</span><small>kcal</small></div>
+      </div>
+
+      <div id="resultBody" class="macros"></div>
+
+      <div id="portionEditor" class="portion hidden">
+        <label for="portionGrams">Portion</label>
+        <div class="stepper">
+          <button type="button" class="step" data-step="-10" aria-label="Decrease portion by 10 grams">−</button>
+          <div class="stepper-field">
+            <input id="portionGrams" type="number" min="1" step="1" inputmode="decimal" />
+            <span>g</span>
+          </div>
+          <button type="button" class="step" data-step="10" aria-label="Increase portion by 10 grams">+</button>
+        </div>
+        <p id="estimateNote" class="note">Adjust the portion to recalculate this estimate.</p>
+      </div>
+
+      <button id="logBtn" class="btn primary block" type="button">Add to today</button>
     </section>
 
-    <section class="card hidden" id="resultCard" aria-labelledby="result-title">
-      <h2 id="result-title">Review estimate</h2>
-      <img id="resultImg" class="hidden" alt="Analyzed meal" />
-      <div id="resultBody"></div>
-      <div id="portionEditor" class="portion-editor hidden">
-        <label for="portionGrams">Portion in grams</label>
-        <input id="portionGrams" type="number" min="1" step="1" inputmode="decimal" />
-        <p id="estimateNote" class="hint">Adjust the portion to recalculate this estimate.</p>
-      </div>
-      <button id="logBtn" type="button">Add to today’s log</button>
-    </section>
-
-    <section class="card" aria-labelledby="log-title">
-      <div class="section-heading">
-        <h2 id="log-title">Today’s log</h2>
-        <span id="totalCalories" class="total">0 kcal</span>
-      </div>
+    <!-- Log -->
+    <section class="log" aria-labelledby="log-title">
+      <h2 id="log-title" class="section-title">Today</h2>
       <ul id="entries" aria-live="polite"></ul>
+      <p id="emptyLog" class="empty">No meals logged yet.</p>
     </section>
 
-    <p class="disclaimer">Nutrition results are reference estimates, not medical advice.</p>
+    <details class="settings">
+      <summary>Settings</summary>
+      <label for="imageUrl">Photo URL</label>
+      <div class="inline">
+        <input id="imageUrl" type="url" placeholder="https://example.com/food.jpg" />
+        <button id="urlBtn" class="btn ghost small" type="button">Analyze</button>
+      </div>
+
+      <label for="modelUrl">Model file</label>
+      <input id="modelUrl" type="text" value="https://huggingface.co/onnx-community/swin-finetuned-food101-ONNX/resolve/main/onnx/model_quantized.onnx" />
+
+      <label for="modelId">Model architecture</label>
+      <select id="modelId"></select>
+
+      <div class="model-toolbar">
+        <span id="cacheStatus" class="cache-status">Checking cache…</span>
+        <button id="downloadBtn" class="btn ghost small" type="button">Download for offline use</button>
+      </div>
+    </details>
+
+    <p class="disclaimer">Runs entirely in your browser. Estimates only — not medical advice.</p>
   </main>
+
+  <!-- Camera sheet -->
+  <div class="camera hidden" id="camera" role="dialog" aria-modal="true" aria-label="Camera">
+    <video id="cameraVideo" playsinline autoplay muted></video>
+    <div class="camera-frame" aria-hidden="true"></div>
+    <p id="cameraMsg" class="camera-msg hidden"></p>
+    <div class="camera-bar">
+      <button id="cameraClose" class="cam-btn" type="button" aria-label="Close camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <button id="shutterBtn" class="shutter" type="button" aria-label="Take photo"><span></span></button>
+      <button id="cameraFlip" class="cam-btn" type="button" aria-label="Switch camera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-1.8A1.5 1.5 0 0 1 10.5 3.5h3a1.5 1.5 0 0 1 1.2.7L15.9 6h1.6A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z"/><path d="M9 12.5a3 3 0 0 1 5.2-2M15 12.5a3 3 0 0 1-5.2 2M14.5 8.5v2h-2M9.5 16.5v-2h2"/></svg>
+      </button>
+    </div>
+  </div>
 
   <script src="nutrition.js"></script>
   <script src="models.js"></script>
